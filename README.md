@@ -18,4 +18,10 @@ Then open `http://localhost:8080`.
 
 ## Deploy
 
-Static files are served from the repository root. The included `.nojekyll` file enables GitHub Pages hosting.
+This repo deploys with GitHub Actions (`.github/workflows/deploy.yml`).
+
+1. Open **Settings → Pages** on GitHub.
+2. Set **Build and deployment → Source** to **GitHub Actions** (not “Deploy from a branch”).
+3. Push to `main`. On the first run, approve the `github-pages` environment if prompted.
+
+Static files are served from the repository root. The included `.nojekyll` file disables Jekyll processing.
