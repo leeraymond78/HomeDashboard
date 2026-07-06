@@ -1,3 +1,6 @@
+import { loadWeatherSection, startWeatherRefresh } from './weather.js';
+import { distanceM, getUserPosition, requestUserPosition } from './location.js';
+
 const REFRESH_INTERVAL_MS = 15_000;
 const LOCATION_THRESHOLD_M = 700;
 const flatView = document.documentElement.hasAttribute('data-flat-view');
@@ -38,8 +41,6 @@ let config;
 let lastRefresh = new Date();
 /** @type {number | null} */
 let refreshTimerId = null;
-/** @type {GeolocationPosition | null} */
-let userPosition = null;
 /** @type {Map<string, { lat: number, lng: number }>} */
 const stopGeo = new Map();
 /** @type {Map<string, object[]>} */
@@ -108,6 +109,7 @@ function groupGeo(group) {
 }
 
 function distanceToGroup(group) {
+  const userPosition = getUserPosition();
   if (!userPosition || !group.routeStops.length) return null;
   const geo = groupGeo(group);
   if (!geo) return null;
@@ -117,18 +119,7 @@ function distanceToGroup(group) {
   );
 }
 
-function distanceM(a, b) {
-  const R = 6371000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
-
-function formatDistance(m) {
+function formatBusDistance(m) {
   const km = m / 1000;
   return m < 1000 ? `${km.toFixed(1)}km` : `${Math.round(km)}km`;
 }
@@ -141,19 +132,11 @@ function autoExpandNearby() {
 }
 
 function updateLocation({ autoOpenNearby = false } = {}) {
-  if (!navigator.geolocation) return Promise.resolve();
-  return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        userPosition = pos;
-        if (autoOpenNearby) autoExpandNearby();
-        updateAllGroups();
-        if (autoOpenNearby) refreshOpenGroups();
-        resolve();
-      },
-      () => resolve(),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 },
-    );
+  return requestUserPosition().then((pos) => {
+    if (!pos) return;
+    if (autoOpenNearby) autoExpandNearby();
+    updateAllGroups();
+    if (autoOpenNearby) refreshOpenGroups();
   });
 }
 
@@ -565,7 +548,7 @@ function updateGroup(index) {
     const distEl = section.querySelector('.group-distance');
     const dist = distanceToGroup(group);
     if (dist != null) {
-      distEl.textContent = formatDistance(dist);
+      distEl.textContent = formatBusDistance(dist);
       distEl.hidden = false;
     } else {
       distEl.hidden = true;
@@ -580,7 +563,7 @@ function updateGroup(index) {
   const distEl = section.querySelector('.group-distance');
   const dist = distanceToGroup(group);
   if (dist != null) {
-    distEl.textContent = formatDistance(dist);
+    distEl.textContent = formatBusDistance(dist);
     distEl.hidden = false;
   } else {
     distEl.hidden = true;
@@ -682,6 +665,8 @@ async function init() {
     await loadStopGeo();
     renderGroups();
     await updateLocation({ autoOpenNearby: !flatView });
+    loadWeatherSection();
+    startWeatherRefresh();
     if (flatView || !config.groups.some((g) => g.open)) refreshOpenGroups();
     startRefreshTimer();
     setInterval(updateRefreshTimer, 1000);
@@ -691,8 +676,11 @@ async function init() {
     document.getElementById('refresh-btn').addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       btn.classList.add('spinning');
-      await updateLocation();
-      await refreshOpenGroups({ silent: true });
+      await Promise.all([
+        updateLocation(),
+        refreshOpenGroups({ silent: true }),
+        loadWeatherSection(),
+      ]);
       btn.classList.remove('spinning');
     });
   } catch (err) {
