@@ -244,6 +244,16 @@ function formatUpdateTime(iso) {
   }
 }
 
+function warningPreviewLabel({ code, name }) {
+  if (code === 'WRAINA') return '🟡黃雨';
+  if (code === 'WRAINR') return '🔴紅雨';
+  if (code === 'WRAINB') return '⚫黑雨';
+  if (code === 'WTS') return '⚡️雷暴';
+  if (TYPHOON_LABELS[code]) return `🌀${TYPHOON_LABELS[code]}`;
+  if (name) return name.replace(/(警告|信號)+$/g, '');
+  return code || WEATHER.missing;
+}
+
 function warningLabel(code, name) {
   if (RAINSTORM_LABELS[code]) return `暴雨警告：${RAINSTORM_LABELS[code]}`;
   if (TYPHOON_LABELS[code]) return `颱風信號：${TYPHOON_LABELS[code]}`;
@@ -270,14 +280,8 @@ function parseWarnings(warnsum) {
 }
 
 function warningSummary(warnings) {
-  if (!warnings.length) return '無生效警告';
-  const rain = warnings.find((w) => RAINSTORM_LABELS[w.code]);
-  const typhoon = warnings.find((w) => TYPHOON_LABELS[w.code] || w.code?.startsWith('TC'));
-  const parts = [];
-  if (rain) parts.push(RAINSTORM_LABELS[rain.code]);
-  if (typhoon) parts.push(`颱風${TYPHOON_LABELS[typhoon.code] ?? typhoon.name}`);
-  if (!parts.length) parts.push(`${warnings.length}項警告`);
-  return parts.join(' · ');
+  if (!warnings.length) return '';
+  return warnings.map((w) => warningPreviewLabel(w)).join(' ');
 }
 
 function buildWeatherViewModel({ rhrread, fnd, flw, warnsum, errors, station }) {
@@ -422,9 +426,9 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
         ${CHEVRON_SVG}
       </span>
     </button>
+    <p class="weather-desc">${escapeHtml(vm.weatherDesc)}</p>
     <div class="group-body weather-body">
       ${vm.locationEn ? `<p class="weather-location-en">${escapeHtml(vm.locationEn)}</p>` : ''}
-      <p class="weather-desc">${escapeHtml(vm.weatherDesc)}</p>
       ${vm.dataNote ? `<p class="weather-note">${escapeHtml(vm.dataNote)}</p>` : ''}
       <div class="weather-summary" role="list">
         ${renderStat('相對濕度', vm.humidity)}

@@ -364,13 +364,24 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.weather-section .group-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weather-section .group-trailing {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
 .weather-preview {
   font-size: 16px;
   color: var(--white-38);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 9rem;
+  flex-shrink: 0;
 }
 
 .weather-section.open .weather-preview {
@@ -388,9 +399,9 @@ body {
   color: var(--white-38);
 }
 
-.weather-body .weather-desc {
+.weather-section > .weather-desc {
   margin: 0;
-  padding: 0.35rem 1rem 0;
+  padding: 0.35rem 1rem 0.5rem;
   font-size: 18px;
   color: var(--white-70);
   line-height: 1.35;
