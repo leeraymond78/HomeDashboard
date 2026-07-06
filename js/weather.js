@@ -1,4 +1,5 @@
 import { distanceM, formatDistance, getUserPosition, requestUserPosition } from './location.js';
+import { escapeHtml } from './utils.js';
 
 const HKO_API = 'https://data.weather.gov.hk/weatherAPI/opendata/weather.php';
 const HKO_LANG = 'tc';
@@ -279,10 +280,6 @@ function buildWeatherViewModel({ rhrread, fnd, flw, warnsum, errors, station }) 
     errors,
     partial: Boolean(errors.length),
   };
-}
-
-function escapeHtml(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function renderStat(label, value, { emphasis = false } = {}) {

@@ -1,5 +1,6 @@
 import { loadWeatherSection, startWeatherRefresh } from './weather.js';
-import { distanceM, getUserPosition, requestUserPosition } from './location.js';
+import { distanceM, formatDistance, getUserPosition, requestUserPosition } from './location.js';
+import { escapeHtml, escapeAttr } from './utils.js';
 
 const REFRESH_INTERVAL_MS = 15_000;
 const LOCATION_THRESHOLD_M = 700;
@@ -51,6 +52,12 @@ const stopGeo = new Map();
 const mtrCache = new Map();
 /** @type {Map<string, string>} */
 const gmbDestCache = new Map();
+
+// Moved to top-level to avoid TDZ confusion (previously declared after first use)
+/** @type {Map<number, EtaRow[]>} */
+const groupEtas = new Map();
+/** @type {Map<number, string>} */
+const groupState = new Map();
 
 /** @typedef {{ title: string, open: boolean, routeStops: RouteStop[] }} Group */
 /** @typedef {{ type: string, [key: string]: unknown }} RouteStop */
@@ -125,11 +132,6 @@ function distanceToGroup(group) {
     { lat: userPosition.coords.latitude, lng: userPosition.coords.longitude },
     geo,
   );
-}
-
-function formatBusDistance(m) {
-  const km = m / 1000;
-  return m < 1000 ? `${km.toFixed(1)}km` : `${Math.round(km)}km`;
 }
 
 function autoExpandNearby() {
@@ -514,14 +516,6 @@ function syncGroupBody(index) {
   setupScrollSpans(body);
 }
 
-function escapeHtml(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function escapeAttr(s) {
-  return escapeHtml(s).replace(/'/g, '&#39;');
-}
-
 function buildGroupsShell() {
   const container = document.getElementById('groups');
   container.innerHTML = config.groups
@@ -585,7 +579,8 @@ function updateGroup(index) {
     const distEl = section.querySelector('.group-distance');
     const dist = distanceToGroup(group);
     if (dist != null) {
-      distEl.textContent = formatBusDistance(dist);
+      // Reuse formatDistance from location.js (fixes bug: was showing 0.5km instead of 500m)
+      distEl.textContent = formatDistance(dist);
       distEl.hidden = false;
     } else {
       distEl.hidden = true;
@@ -600,7 +595,8 @@ function updateGroup(index) {
   const distEl = section.querySelector('.group-distance');
   const dist = distanceToGroup(group);
   if (dist != null) {
-    distEl.textContent = formatBusDistance(dist);
+    // Reuse formatDistance from location.js (fixes bug: was showing 0.5km instead of 500m)
+    distEl.textContent = formatDistance(dist);
     distEl.hidden = false;
   } else {
     distEl.hidden = true;
@@ -651,11 +647,6 @@ function updateLiveMinutes() {
   }
 }
 
-/** @type {Map<number, EtaRow[]>} */
-const groupEtas = new Map();
-/** @type {Map<number, string>} */
-const groupState = new Map();
-
 async function refreshGroup(index, { silent = false } = {}) {
   const group = config.groups[index];
   if (!flatView && !group.open) return;
@@ -702,6 +693,7 @@ async function init() {
     await loadStopGeo();
     renderGroups();
     await updateLocation({ autoOpenNearby: !flatView });
+    // Intentionally not awaited — runs in parallel with bus data refresh
     loadWeatherSection();
     startWeatherRefresh();
     if (flatView || !config.groups.some((g) => g.open)) refreshOpenGroups();
