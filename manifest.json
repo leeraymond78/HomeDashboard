@@ -1,7 +1,7 @@
 {
-  "name": "バス到着情報",
-  "short_name": "バスETA",
-  "description": "香港バス到着予定時刻",
+  "name": "ホームダッシュボード",
+  "short_name": "Home Dashboard",
+  "description": "バス・小巴・接駁・天気。ゴールドコースト周辺の出かけ情報",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
