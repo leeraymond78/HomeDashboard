@@ -1,0 +1,105 @@
+{
+  "groups": [
+    {
+      "title": "ゴールドコースト・九竜行",
+      "open": false,
+      "routeStops": [
+        { "type": "kmb", "route": "52X", "bound": "O", "stop": "971554761E4413EF" },
+        { "type": "kmb", "route": "61M", "bound": "O", "stop": "971554761E4413EF" },
+        { "type": "kmb", "route": "53", "bound": "O", "stop": "971554761E4413EF" },
+        { "type": "kmb", "route": "A33", "bound": "I", "stop": "CDE436F19F193080" },
+        { "type": "kmb", "route": "252S", "bound": "O", "stop": "971554761E4413EF" },
+        { "type": "nwfb", "co": "CTB", "route": "952", "dir": "O", "stop": "001889" },
+        { "type": "nwfb", "co": "CTB", "route": "962", "dir": "O", "stop": "001889" },
+        { "type": "nwfb", "co": "CTB", "route": "952P", "dir": "O", "stop": "001889" }
+      ]
+    },
+    {
+      "title": "高速道路インター・九竜行",
+      "open": false,
+      "routeStops": [
+        { "type": "kmb", "route": "260X", "bound": "O", "stop": "21FC719DAF5F9D28" }
+      ]
+    },
+    {
+      "title": "TSTから帰宅",
+      "open": false,
+      "routeStops": [
+        { "type": "kmb", "route": "260X", "bound": "I", "stop": "AB057A63C24E990E" },
+        { "type": "nwfb", "co": "CTB", "route": "50", "dir": "I", "stop": "002627" }
+      ]
+    },
+    {
+      "title": "高速道路インター・屯門行",
+      "open": false,
+      "routeStops": [
+        { "type": "kmb", "route": "52X", "bound": "I", "stop": "C1590716F6FABC50" },
+        { "type": "kmb", "route": "61M", "bound": "I", "stop": "C1590716F6FABC50" },
+        { "type": "kmb", "route": "53", "bound": "I", "stop": "C1590716F6FABC50" },
+        { "type": "nwfb", "co": "CTB", "route": "952", "dir": "I", "stop": "003364" },
+        { "type": "nwfb", "co": "CTB", "route": "962", "dir": "I", "stop": "003359" }
+      ]
+    },
+    {
+      "title": "ゴールドコースト・屯門行",
+      "open": false,
+      "routeStops": [
+        { "type": "mtr", "stopId": "K51-D100" },
+        { "type": "mtr", "stopId": "K51A-D080" },
+        { "type": "mtr", "stopId": "K53-D060" },
+        { "type": "kmb", "route": "52X", "bound": "I", "stop": "813A44129E51981F" },
+        { "type": "kmb", "route": "61M", "bound": "I", "stop": "813A44129E51981F" },
+        { "type": "kmb", "route": "53", "bound": "I", "stop": "813A44129E51981F" },
+        { "type": "gmb", "routeId": "43", "realRouteId": "2001741", "stopId": "20002053", "routeSeq": 1 },
+        { "type": "gmb", "routeId": "43B", "realRouteId": "2001740", "stopId": "20002053", "routeSeq": 1 }
+      ]
+    },
+    {
+      "title": "屯門タウンセンター",
+      "open": false,
+      "routeStops": [
+        { "type": "mtr", "stopId": "K51-U090" },
+        { "type": "mtr", "stopId": "K51A-U090" },
+        { "type": "mtr", "stopId": "K53-U020" },
+        { "type": "kmb", "route": "52X", "bound": "O", "stop": "10DABE0380229B4D" },
+        { "type": "gmb", "routeId": "43", "realRouteId": "2001741", "stopId": "20001314", "routeSeq": 1 },
+        { "type": "gmb", "routeId": "43B", "realRouteId": "2001740", "stopId": "20001314", "routeSeq": 1 }
+      ]
+    },
+    {
+      "title": "新都プラーザ",
+      "open": false,
+      "routeStops": [
+        { "type": "mtr", "stopId": "K51-U100" },
+        { "type": "mtr", "stopId": "K51A-U100" },
+        { "type": "mtr", "stopId": "K53-U030" },
+        { "type": "kmb", "route": "52X", "bound": "O", "stop": "1E15CFA82F408124" },
+        { "type": "kmb", "route": "61M", "bound": "O", "stop": "1E15CFA82F408124" },
+        { "type": "kmb", "route": "A33", "bound": "I", "stop": "F888B8E179391815" },
+        { "type": "gmb", "routeId": "43", "realRouteId": "2001741", "stopId": "20001346", "routeSeq": 1 },
+        { "type": "gmb", "routeId": "43B", "realRouteId": "2001740", "stopId": "20001346", "routeSeq": 1 }
+      ]
+    },
+    {
+      "title": "ヴィシーティー前",
+      "open": false,
+      "routeStops": [
+        { "type": "mtr", "stopId": "K51-U080" },
+        { "type": "mtr", "stopId": "K51A-U080" },
+        { "type": "mtr", "stopId": "K53-U010" },
+        { "type": "gmb", "routeId": "43", "realRouteId": "2001741", "stopId": "20001312", "routeSeq": 1 },
+        { "type": "gmb", "routeId": "43B", "realRouteId": "2001740", "stopId": "20001312", "routeSeq": 1 }
+      ]
+    },
+    {
+      "title": "市場前",
+      "open": false,
+      "routeStops": [
+        { "type": "mtr", "stopId": "K51-U070" },
+        { "type": "mtr", "stopId": "K51A-U070" },
+        { "type": "gmb", "routeId": "43", "realRouteId": "2001741", "stopId": "20001344", "routeSeq": 1 },
+        { "type": "gmb", "routeId": "43B", "realRouteId": "2001740", "stopId": "20001344", "routeSeq": 1 }
+      ]
+    }
+  ]
+}

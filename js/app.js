@@ -1,0 +1,653 @@
+const REFRESH_INTERVAL_MS = 15_000;
+const LOCATION_THRESHOLD_M = 700;
+
+const MTR_DEST = {
+  FT: '富泰',
+  TL: '大欖',
+  SKWT: '掃管笏',
+  SKW_CIR: '掃管笏',
+};
+
+const MTR_GEO = {
+  'K51-D100': { lat: 22.373628, lng: 113.991213 },
+  'K51A-D080': { lat: 22.373628, lng: 113.991213 },
+  'K53-D060': { lat: 22.373653, lng: 113.991237 },
+  'K51-U090': { lat: 22.39153, lng: 113.9755 },
+  'K51A-U090': { lat: 22.39153, lng: 113.9755 },
+  'K53-U020': { lat: 22.391543, lng: 113.975435 },
+  'K51-U100': { lat: 22.3906, lng: 113.9788 },
+  'K51A-U100': { lat: 22.3906, lng: 113.9788 },
+  'K53-U030': { lat: 22.390622, lng: 113.978751 },
+  'K51-U080': { lat: 22.39494, lng: 113.9746 },
+  'K51A-U080': { lat: 22.39494, lng: 113.9746 },
+  'K53-U010': { lat: 22.394225, lng: 113.973358 },
+  'K51-U070': { lat: 22.39834, lng: 113.9752 },
+  'K51A-U070': { lat: 22.39834, lng: 113.9752 },
+};
+
+/** @type {{ groups: Group[] }} */
+let config;
+/** @type {Date} */
+let lastRefresh = new Date();
+/** @type {number | null} */
+let refreshTimerId = null;
+/** @type {GeolocationPosition | null} */
+let userPosition = null;
+/** @type {Map<string, { lat: number, lng: number }>} */
+const stopGeo = new Map();
+/** @type {Map<string, object[]>} */
+const mtrCache = new Map();
+/** @type {Map<string, string>} */
+const gmbDestCache = new Map();
+
+/** @typedef {{ title: string, open: boolean, routeStops: RouteStop[] }} Group */
+/** @typedef {{ type: string, [key: string]: unknown }} RouteStop */
+/** @typedef {{ routeId: string, operator: string, express: string, expressClass: string, routeClass: string, time: string, dest: string, mins: number, remark: string, etaClass: string, etaTime: Date }} EtaRow */
+
+async function loadConfig() {
+  const res = await fetch('config.json');
+  if (!res.ok) throw new Error('設定ファイルを読み込めません');
+  config = await res.json();
+}
+
+async function loadStopGeo() {
+  const firstStops = config.groups.map((g) => g.routeStops[0]).filter(Boolean);
+  await Promise.all(firstStops.map(loadRouteStopGeo));
+}
+
+async function loadRouteStopGeo(rs) {
+  try {
+    if (rs.type === 'kmb') {
+      const res = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${rs.stop}`);
+      const json = await res.json();
+      const d = json.data;
+      stopGeo.set(rs.stop, { lat: parseFloat(d.lat), lng: parseFloat(d.long) });
+    } else if (rs.type === 'mtr' && MTR_GEO[rs.stopId]) {
+      stopGeo.set(rs.stopId, MTR_GEO[rs.stopId]);
+    } else if (rs.type === 'nwfb') {
+      const res = await fetch(`https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/stop/${rs.stop}`);
+      const json = await res.json();
+      const d = json.data;
+      stopGeo.set(rs.stop, { lat: parseFloat(d.lat), lng: parseFloat(d.long) });
+    } else if (rs.type === 'gmb') {
+      const res = await fetch(`https://data.etagmb.gov.hk/stop/${rs.stopId}`);
+      const json = await res.json();
+      const d = json.data.coordinates.wgs84;
+      stopGeo.set(rs.stopId, { lat: parseFloat(d.latitude), lng: parseFloat(d.longitude) });
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function firstRouteStopId(rs) {
+  if (rs.type === 'kmb' || rs.type === 'nwfb') return rs.stop;
+  return rs.stopId;
+}
+
+function groupGeo(group) {
+  const rs = group.routeStops[0];
+  if (!rs) return null;
+  return stopGeo.get(firstRouteStopId(rs)) ?? null;
+}
+
+function distanceToGroup(group) {
+  if (!userPosition || !group.routeStops.length) return null;
+  const geo = groupGeo(group);
+  if (!geo) return null;
+  return distanceM(
+    { lat: userPosition.coords.latitude, lng: userPosition.coords.longitude },
+    geo,
+  );
+}
+
+function distanceM(a, b) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function formatDistance(m) {
+  const km = m / 1000;
+  return m < 1000 ? `${km.toFixed(1)}km` : `${Math.round(km)}km`;
+}
+
+function autoExpandNearby() {
+  for (const group of config.groups) {
+    const dist = distanceToGroup(group);
+    if (dist != null && dist < LOCATION_THRESHOLD_M) group.open = true;
+  }
+}
+
+function updateLocation({ autoOpenNearby = false } = {}) {
+  if (!navigator.geolocation) return Promise.resolve();
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        userPosition = pos;
+        if (autoOpenNearby) autoExpandNearby();
+        updateAllGroups();
+        if (autoOpenNearby) refreshOpenGroups();
+        resolve();
+      },
+      () => resolve(),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 },
+    );
+  });
+}
+
+function operatorClass(op) {
+  return { kmb: 'color-kmb', mtr: 'color-mtr', gmb: 'color-gmb', nwfb: 'color-nwfb' }[op] ?? '';
+}
+
+function isAirport(routeId) {
+  return routeId.startsWith('A');
+}
+
+function expressInfo(routeId, operator) {
+  if (isAirport(routeId)) return { text: '空港', cls: 'bg-airport' };
+  if (operator === 'kmb') {
+    return routeId.includes('X')
+      ? { text: '特急', cls: 'bg-kmb-express' }
+      : { text: '各停', cls: 'bg-kmb-local' };
+  }
+  if (operator === 'mtr') return { text: '各停', cls: 'bg-mtr' };
+  if (operator === 'gmb') return { text: '準急', cls: 'bg-gmb' };
+  return { text: 'ﾌﾂｳ', cls: 'bg-nwfb' };
+}
+
+function translateRemark(operator, raw, isScheduled) {
+  if (operator === 'kmb') {
+    if (raw === '原定班次') return '時刻通り';
+    return raw;
+  }
+  if (operator === 'gmb') {
+    if (raw === '未開出') return '発車待ち';
+    return raw ?? '';
+  }
+  if (operator === 'mtr') {
+    if (raw === '受交通擠塞影響，到站時間可能稍為延遲') {
+      return '渋滞により、到着時間が若干遅れる場合があります。';
+    }
+    if (isScheduled && !raw) return '時刻通り';
+    return raw ?? '';
+  }
+  return raw ?? '';
+}
+
+function etaColorClass(isScheduled, remark) {
+  if (isScheduled) return 'eta-scheduled';
+  if (remark) return 'eta-error';
+  return 'eta-normal';
+}
+
+function formatTime(date) {
+  return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
+function mtrRouteFromStopId(stopId) {
+  return stopId.split('-')[0];
+}
+
+function mtrDestFromLineRef(lineRef) {
+  const suffix = lineRef.split('_').slice(1).join('_');
+  return MTR_DEST[suffix] ?? suffix;
+}
+
+async function fetchKmbEtas(routeStop) {
+  const serviceType = routeStop.service_type ?? 1;
+  const url = `https://data.etabus.gov.hk/v1/transport/kmb/eta/${routeStop.stop}/${routeStop.route}/${serviceType}`;
+  const res = await fetch(url);
+  const json = await res.json();
+  return (json.data ?? [])
+    .filter((e) => e.eta)
+    .map((e) => ({
+      routeId: e.route,
+      operator: 'kmb',
+      express: expressInfo(e.route, 'kmb'),
+      routeClass: operatorClass('kmb'),
+      time: formatTime(new Date(e.eta)),
+      dest: e.dest_tc,
+      mins: Math.max(0, Math.round((new Date(e.eta) - Date.now()) / 60000)),
+      remark: translateRemark('kmb', e.rmk_tc, e.rmk_en === 'Scheduled Bus'),
+      etaClass: etaColorClass(e.rmk_en === 'Scheduled Bus', e.rmk_tc),
+      etaTime: new Date(e.eta),
+    }));
+}
+
+async function fetchNwfbEtas(routeStop) {
+  const url = `https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/eta/CTB/${routeStop.stop}/${routeStop.route}`;
+  const res = await fetch(url);
+  const json = await res.json();
+  return (json.data ?? [])
+    .filter((e) => e.eta)
+    .map((e) => ({
+      routeId: e.route,
+      operator: 'nwfb',
+      express: expressInfo(e.route, 'nwfb'),
+      routeClass: operatorClass('nwfb'),
+      time: formatTime(new Date(e.eta)),
+      dest: e.dest_tc,
+      mins: Math.max(0, Math.round((new Date(e.eta) - Date.now()) / 60000)),
+      remark: translateRemark('nwfb', e.rmk_tc, false),
+      etaClass: etaColorClass(false, e.rmk_tc),
+      etaTime: new Date(e.eta),
+    }));
+}
+
+async function fetchMtrSchedule(route) {
+  if (mtrCache.has(route)) return mtrCache.get(route);
+  const res = await fetch('https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ language: 'zh', routeName: route }),
+  });
+  const json = await res.json();
+  const stops = json.busStop ?? [];
+  mtrCache.set(route, stops);
+  return stops;
+}
+
+async function fetchMtrEtas(routeStop) {
+  const route = mtrRouteFromStopId(routeStop.stopId);
+  const stops = await fetchMtrSchedule(route);
+  const stop = stops.find((s) => s.busStopId === routeStop.stopId);
+  if (!stop?.bus?.length) return [];
+  const now = Date.now();
+  return stop.bus.map((bus) => {
+    const secs = parseInt(bus.departureTimeInSecond, 10);
+    const etaTime = new Date(now + secs * 1000);
+    const isScheduled = bus.isScheduled === '1' || bus.isScheduled === 1;
+    const remark = translateRemark('mtr', bus.busRemark, isScheduled);
+    const routeId = bus.lineRef.split('_')[0];
+    return {
+      routeId,
+      operator: 'mtr',
+      express: expressInfo(routeId, 'mtr'),
+      routeClass: operatorClass('mtr'),
+      time: formatTime(etaTime),
+      dest: mtrDestFromLineRef(bus.lineRef),
+      mins: Math.max(0, Math.round(secs / 60)),
+      remark,
+      etaClass: etaColorClass(isScheduled, bus.busRemark),
+      etaTime,
+    };
+  });
+}
+
+async function gmbDestination(realRouteId, routeSeq) {
+  const key = `${realRouteId}-${routeSeq}`;
+  if (gmbDestCache.has(key)) return gmbDestCache.get(key);
+  try {
+    const res = await fetch(`https://data.etagmb.gov.hk/route/${realRouteId}`);
+    const json = await res.json();
+    const dir = json.data?.[0]?.directions?.find((d) => d.route_seq === routeSeq);
+    const dest = dir?.dest_tc?.trim() ?? '';
+    gmbDestCache.set(key, dest);
+    return dest;
+  } catch {
+    return '';
+  }
+}
+
+async function fetchGmbEtas(routeStop) {
+  const url = `https://data.etagmb.gov.hk/eta/stop/${routeStop.stopId}`;
+  const res = await fetch(url);
+  const json = await res.json();
+  const realId = parseInt(routeStop.realRouteId, 10);
+  const entry = (json.data ?? []).find((d) => d.route_id === realId && d.route_seq === routeStop.routeSeq);
+  if (!entry?.eta?.length) return [];
+  const dest = await gmbDestination(routeStop.realRouteId, routeStop.routeSeq);
+  const displayRoute = routeStop.routeId || String(realId);
+  return entry.eta
+    .filter((e) => e.timestamp)
+    .map((e) => {
+      const isScheduled = e.remarks_en === 'Scheduled';
+      const remark = translateRemark('gmb', e.remarks_tc, isScheduled);
+      return {
+        routeId: displayRoute,
+        operator: 'gmb',
+        express: expressInfo(displayRoute, 'gmb'),
+        routeClass: operatorClass('gmb'),
+        time: formatTime(new Date(e.timestamp)),
+        dest,
+        mins: e.diff ?? Math.max(0, Math.round((new Date(e.timestamp) - Date.now()) / 60000)),
+        remark,
+        etaClass: etaColorClass(isScheduled, e.remarks_tc),
+        etaTime: new Date(e.timestamp),
+      };
+    });
+}
+
+async function fetchGroupEtas(group) {
+  const tasks = group.routeStops.map(async (rs) => {
+    try {
+      switch (rs.type) {
+        case 'kmb': return fetchKmbEtas(rs);
+        case 'nwfb': return fetchNwfbEtas(rs);
+        case 'mtr': return fetchMtrEtas(rs);
+        case 'gmb': return fetchGmbEtas(rs);
+        default: return [];
+      }
+    } catch {
+      return [];
+    }
+  });
+  const results = await Promise.all(tasks);
+  return results.flat().sort((a, b) => a.etaTime - b.etaTime);
+}
+
+function scrollSpan(text, className) {
+  const safe = escapeHtml(text);
+  if (!text) return '';
+  return `<span class="${className}" data-text="${escapeAttr(text)}">${safe}</span>`;
+}
+
+function createEtaRowElement(row) {
+  const tr = document.createElement('tr');
+  tr.className = 'eta-row';
+  tr.innerHTML = `
+    <td class="route-id ${row.routeClass}"></td>
+    <td class="express-cell ${row.express.cls}"></td>
+    <td class="eta-time ${row.etaClass}"></td>
+    <td class="dest-cell"></td>
+    <td class="eta-mins ${row.etaClass}"></td>
+    <td class="remark-cell"></td>`;
+  patchEtaRow(tr, row);
+  return tr;
+}
+
+function setCellClass(td, className) {
+  if (td.className !== className) td.className = className;
+}
+
+function setCellText(td, text) {
+  const next = String(text ?? '');
+  if (td.textContent !== next) td.textContent = next;
+}
+
+function setScrollText(td, text, className) {
+  const next = String(text ?? '');
+  let span = td.querySelector(`.${className}`);
+  if (!next) {
+    if (td.childElementCount) td.replaceChildren();
+    return;
+  }
+  if (!span) {
+    td.innerHTML = scrollSpan(next, className);
+    return;
+  }
+  if (span.textContent !== next) {
+    span.textContent = next;
+    span.classList.remove('scroll');
+    span.style.removeProperty('--scroll-offset');
+  }
+}
+
+function patchEtaRow(tr, row) {
+  const [routeTd, expressTd, timeTd, destTd, minsTd, remarkTd] = tr.children;
+
+  setCellClass(routeTd, `route-id ${row.routeClass}`);
+  setCellText(routeTd, row.routeId);
+
+  setCellClass(expressTd, `express-cell ${row.express.cls}`);
+  setCellText(expressTd, row.express.text);
+
+  setCellClass(timeTd, `eta-time ${row.etaClass}`);
+  setCellText(timeTd, row.time);
+
+  setScrollText(destTd, row.dest, 'dest-scroll');
+
+  setCellClass(minsTd, `eta-mins ${row.etaClass}`);
+  setCellText(minsTd, row.mins);
+
+  setScrollText(remarkTd, row.remark, 'remark-scroll');
+}
+
+const ETA_TABLE_COLGROUP = `
+  <colgroup>
+    <col class="col-route">
+    <col class="col-express">
+    <col class="col-time">
+    <col class="col-dest">
+    <col class="col-mins">
+    <col class="col-remark">
+  </colgroup>`;
+
+function ensureEtaTable(body) {
+  let table = body.querySelector('.eta-table');
+  if (table) return table.querySelector('tbody');
+
+  body.replaceChildren();
+  table = document.createElement('table');
+  table.className = 'eta-table';
+  table.innerHTML = `${ETA_TABLE_COLGROUP}<tbody></tbody>`;
+  body.appendChild(table);
+  return table.querySelector('tbody');
+}
+
+function showGroupMessage(body, className, text) {
+  let msg = body.querySelector(`.${className}`);
+  if (msg) {
+    if (msg.textContent !== text) msg.textContent = text;
+    return;
+  }
+  body.replaceChildren();
+  msg = document.createElement('div');
+  msg.className = className;
+  msg.textContent = text;
+  body.appendChild(msg);
+}
+
+function syncGroupBody(index) {
+  const section = document.querySelector(`.group[data-index="${index}"]`);
+  if (!section) return;
+
+  const body = section.querySelector('.group-body');
+  const etas = groupEtas.get(index) ?? [];
+  const state = groupState.get(index) ?? 'loading';
+
+  if (!etas.length) {
+    if (state === 'loading') {
+      showGroupMessage(body, 'loading', '読み込み中…');
+      return;
+    }
+    if (state === 'error') {
+      showGroupMessage(body, 'error-msg', 'データを取得できませんでした');
+      return;
+    }
+    showGroupMessage(body, 'empty', '到着予定のバスはありません');
+    return;
+  }
+
+  const tbody = ensureEtaTable(body);
+  const existing = [...tbody.querySelectorAll('.eta-row')];
+
+  etas.forEach((eta, i) => {
+    if (existing[i]) patchEtaRow(existing[i], eta);
+    else tbody.appendChild(createEtaRowElement(eta));
+  });
+  existing.slice(etas.length).forEach((tr) => tr.remove());
+
+  setupScrollSpans(body);
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/'/g, '&#39;');
+}
+
+function buildGroupsShell() {
+  const container = document.getElementById('groups');
+  container.innerHTML = config.groups
+    .map((group, i) => `
+      <section class="group" data-index="${i}">
+        <button class="group-header" type="button" aria-expanded="false">
+          <span class="group-title">${escapeHtml(group.title)}</span>
+          <span class="group-trailing">
+            <span class="group-distance" hidden></span>
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </span>
+        </button>
+        <div class="group-body"></div>
+      </section>`)
+    .join('');
+
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest('.group-header');
+    if (!btn) return;
+    const index = parseInt(btn.closest('.group').dataset.index, 10);
+    const group = config.groups[index];
+    group.open = !group.open;
+    if (group.open) {
+      if (groupEtas.has(index)) {
+        updateGroup(index);
+        refreshGroup(index, { silent: true });
+      } else {
+        refreshGroup(index, { silent: false });
+      }
+    } else {
+      updateGroup(index);
+    }
+  });
+}
+
+function updateGroup(index) {
+  const group = config.groups[index];
+  const section = document.querySelector(`.group[data-index="${index}"]`);
+  if (!section) return;
+
+  section.classList.toggle('open', group.open);
+  section.querySelector('.group-header').setAttribute('aria-expanded', String(group.open));
+
+  const distEl = section.querySelector('.group-distance');
+  const dist = distanceToGroup(group);
+  if (dist != null) {
+    distEl.textContent = formatDistance(dist);
+    distEl.hidden = false;
+  } else {
+    distEl.hidden = true;
+  }
+
+  const body = section.querySelector('.group-body');
+  if (!group.open) {
+    body.replaceChildren();
+    return;
+  }
+
+  syncGroupBody(index);
+}
+
+function updateAllGroups() {
+  config.groups.forEach((_, i) => updateGroup(i));
+}
+
+function renderGroups() {
+  buildGroupsShell();
+  updateAllGroups();
+}
+
+function setupScrollSpans(root) {
+  root.querySelectorAll('.dest-scroll, .remark-scroll').forEach((el) => {
+    const cell = el.closest('td');
+    if (!cell || !el.textContent) return;
+    if (el.scrollWidth > cell.clientWidth) {
+      el.classList.add('scroll');
+      el.style.setProperty('--scroll-offset', `${cell.clientWidth - el.scrollWidth}px`);
+    }
+  });
+}
+
+function updateLiveMinutes() {
+  const now = Date.now();
+  for (const [index, etas] of groupEtas.entries()) {
+    if (!config.groups[index]?.open) continue;
+    const rows = document.querySelectorAll(`.group[data-index="${index}"] .eta-row`);
+    etas.forEach((row, i) => {
+      const mins = Math.max(0, Math.round((row.etaTime - now) / 60000));
+      if (row.mins === mins) return;
+      row.mins = mins;
+      const cell = rows[i]?.querySelector('.eta-mins');
+      if (cell) cell.textContent = mins;
+    });
+  }
+}
+
+/** @type {Map<number, EtaRow[]>} */
+const groupEtas = new Map();
+/** @type {Map<number, string>} */
+const groupState = new Map();
+
+async function refreshGroup(index, { silent = false } = {}) {
+  const group = config.groups[index];
+  if (!group.open) return;
+
+  if (!silent && !groupEtas.has(index)) {
+    groupState.set(index, 'loading');
+    updateGroup(index);
+  }
+
+  try {
+    const etas = await fetchGroupEtas(group);
+    groupEtas.set(index, etas);
+    groupState.set(index, 'ok');
+    lastRefresh = new Date();
+  } catch {
+    if (!silent || !groupEtas.has(index)) groupState.set(index, 'error');
+  }
+
+  updateGroup(index);
+}
+
+function refreshOpenGroups({ silent = true } = {}) {
+  mtrCache.clear();
+  const open = config.groups.map((g, i) => (g.open ? i : -1)).filter((i) => i >= 0);
+  return Promise.all(open.map((i) => refreshGroup(i, { silent })));
+}
+
+function startRefreshTimer() {
+  if (refreshTimerId) clearInterval(refreshTimerId);
+  refreshTimerId = setInterval(() => refreshOpenGroups(), REFRESH_INTERVAL_MS);
+}
+
+function updateRefreshTimer() {
+  const el = document.getElementById('refresh-timer');
+  const secs = Math.floor((Date.now() - lastRefresh.getTime()) / 1000);
+  el.textContent = `${secs}s`;
+}
+
+async function init() {
+  try {
+    await loadConfig();
+    await loadStopGeo();
+    renderGroups();
+    await updateLocation({ autoOpenNearby: true });
+    if (!config.groups.some((g) => g.open)) refreshOpenGroups();
+    startRefreshTimer();
+    setInterval(updateRefreshTimer, 1000);
+    setInterval(updateLiveMinutes, 30_000);
+    updateRefreshTimer();
+
+    document.getElementById('refresh-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.classList.add('spinning');
+      await updateLocation();
+      await refreshOpenGroups({ silent: true });
+      btn.classList.remove('spinning');
+    });
+  } catch (err) {
+    document.getElementById('groups').innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+init();
