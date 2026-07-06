@@ -58,6 +58,8 @@ const gmbDestCache = new Map();
 const groupEtas = new Map();
 /** @type {Map<number, string>} */
 const groupState = new Map();
+/** @type {Set<number>} */
+const groupShowAllEtas = new Set();
 
 /** @typedef {{ title: string, open: boolean, routeStops: RouteStop[] }} Group */
 /** @typedef {{ type: string, [key: string]: unknown }} RouteStop */
@@ -482,6 +484,38 @@ function showGroupMessage(body, className, text) {
   body.appendChild(msg);
 }
 
+function etasLimitForGroup(index) {
+  if (!Number.isFinite(maxEtasPerGroup)) return Infinity;
+  if (groupShowAllEtas.has(index)) return Infinity;
+  return maxEtasPerGroup;
+}
+
+function syncShowMoreButton(body, index, etas) {
+  const hiddenCount = etas.length - maxEtasPerGroup;
+  const visible = Number.isFinite(maxEtasPerGroup)
+    && hiddenCount > 0
+    && !groupShowAllEtas.has(index);
+
+  let btn = body.querySelector('.show-more-btn');
+  if (!visible) {
+    btn?.remove();
+    return;
+  }
+
+  const label = `もっと見る（あと${hiddenCount}本）`;
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'show-more-btn';
+    btn.addEventListener('click', () => {
+      groupShowAllEtas.add(index);
+      syncGroupBody(index);
+    });
+    body.appendChild(btn);
+  }
+  if (btn.textContent !== label) btn.textContent = label;
+}
+
 function syncGroupBody(index) {
   const section = document.querySelector(`.group[data-index="${index}"]`);
   if (!section) return;
@@ -489,7 +523,7 @@ function syncGroupBody(index) {
   const body = section.querySelector('.group-body');
   const etas = groupEtas.get(index) ?? [];
   const state = groupState.get(index) ?? 'loading';
-  const displayEtas = etas.slice(0, maxEtasPerGroup);
+  const displayEtas = etas.slice(0, etasLimitForGroup(index));
 
   if (!displayEtas.length) {
     if (state === 'loading') {
@@ -513,6 +547,7 @@ function syncGroupBody(index) {
   });
   existing.slice(displayEtas.length).forEach((tr) => tr.remove());
 
+  syncShowMoreButton(body, index, etas);
   setupScrollSpans(body);
 }
 
@@ -636,7 +671,7 @@ function updateLiveMinutes() {
   for (const [index, etas] of groupEtas.entries()) {
     if (!flatView && !config.groups[index]?.open) continue;
     const rows = document.querySelectorAll(`.group[data-index="${index}"] .eta-row`);
-    const displayEtas = etas.slice(0, maxEtasPerGroup);
+    const displayEtas = etas.slice(0, etasLimitForGroup(index));
     displayEtas.forEach((row, i) => {
       const mins = Math.max(0, Math.round((row.etaTime - now) / 60000));
       if (row.mins === mins) return;
