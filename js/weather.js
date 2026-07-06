@@ -428,7 +428,6 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
     </button>
     <p class="weather-desc">${escapeHtml(vm.weatherDesc)}</p>
     <div class="group-body weather-body">
-      ${vm.locationEn ? `<p class="weather-location-en">${escapeHtml(vm.locationEn)}</p>` : ''}
       ${vm.dataNote ? `<p class="weather-note">${escapeHtml(vm.dataNote)}</p>` : ''}
       <div class="weather-summary" role="list">
         ${renderStat('相對濕度', vm.humidity)}
