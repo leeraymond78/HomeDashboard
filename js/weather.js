@@ -66,6 +66,12 @@ const TYPHOON_LABELS = {
 
 /** @type {number | null} */
 let weatherRefreshId = null;
+let weatherExpanded = false;
+
+const CHEVRON_SVG = `
+  <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <polyline points="6 9 12 15 18 9"/>
+  </svg>`;
 
 function hkoUrl(dataType) {
   return `${HKO_API}?dataType=${dataType}&lang=${HKO_LANG}`;
@@ -253,6 +259,7 @@ function buildWeatherViewModel({ rhrread, fnd, flw, warnsum, errors, station }) 
   const dataNote = [buildLocationNote(station), humidityNote].filter(Boolean).join('；');
 
   return {
+    headerTitle: `${station?.place ?? WEATHER.missing} · ${temp?.value != null ? `${temp.value}°C` : WEATHER.missing}`,
     location: station?.place ?? WEATHER.missing,
     locationEn: station?.en ?? '',
     dataNote,
@@ -286,16 +293,55 @@ function renderStat(label, value, { emphasis = false } = {}) {
     </div>`;
 }
 
+function syncWeatherOpen(root) {
+  root.classList.toggle('open', weatherExpanded);
+  const header = root.querySelector('.weather-header');
+  if (header) header.setAttribute('aria-expanded', String(weatherExpanded));
+}
+
+function bindWeatherToggle(root) {
+  if (root.dataset.toggleBound) return;
+  root.addEventListener('click', (e) => {
+    const btn = e.target.closest('.weather-header');
+    if (!btn) return;
+    weatherExpanded = !weatherExpanded;
+    syncWeatherOpen(root);
+  });
+  root.dataset.toggleBound = '1';
+}
+
 function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
   if (!root) return;
 
+  root.className = 'weather-section group';
+
   if (state === 'loading') {
-    root.innerHTML = '<div class="weather-loading loading">天氣載入中…</div>';
+    root.innerHTML = `
+      <button class="group-header weather-header" type="button" aria-expanded="false" disabled>
+        <span class="group-title">天氣</span>
+        <span class="group-trailing">
+          <span class="weather-preview">載入中…</span>
+          ${CHEVRON_SVG}
+        </span>
+      </button>`;
+    syncWeatherOpen(root);
     return;
   }
 
   if (state === 'error' && !vm) {
-    root.innerHTML = '<div class="weather-error error-msg">天氣資料暫時無法取得</div>';
+    root.innerHTML = `
+      <button class="group-header weather-header" type="button" aria-expanded="false">
+        <span class="group-title">天氣</span>
+        <span class="group-trailing">
+          <span class="weather-preview weather-preview-severe">無法取得</span>
+          ${CHEVRON_SVG}
+        </span>
+      </button>
+      <div class="group-body weather-body">
+        <div class="weather-error error-msg">天氣資料暫時無法取得</div>
+      </div>`;
+    bindWeatherToggle(root);
+    syncWeatherOpen(root);
     return;
   }
 
@@ -310,40 +356,50 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
     .map((line) => `<li>${escapeHtml(line)}</li>`)
     .join('');
 
+  const previewClass = vm.warnings.some((w) => w.severe)
+    ? 'weather-preview weather-preview-severe'
+    : 'weather-preview';
+
   root.innerHTML = `
-    <div class="weather-header">
-      <div class="weather-title-row">
-        <h2 class="weather-title">${escapeHtml(vm.location)}</h2>
-        ${vm.locationEn ? `<span class="weather-title-en">${escapeHtml(vm.locationEn)}</span>` : ''}
-      </div>
+    <button class="group-header weather-header" type="button" aria-expanded="false">
+      <span class="group-title">${escapeHtml(vm.headerTitle)}</span>
+      <span class="group-trailing">
+        <span class="${previewClass}">${escapeHtml(vm.warningSummary)}</span>
+        ${CHEVRON_SVG}
+      </span>
+    </button>
+    <div class="group-body weather-body">
+      ${vm.locationEn ? `<p class="weather-location-en">${escapeHtml(vm.locationEn)}</p>` : ''}
       <p class="weather-desc">${escapeHtml(vm.weatherDesc)}</p>
       ${vm.dataNote ? `<p class="weather-note">${escapeHtml(vm.dataNote)}</p>` : ''}
-    </div>
-    <div class="weather-summary" role="list">
-      ${renderStat('目前溫度', vm.temperature, { emphasis: true })}
-      ${renderStat('相對濕度', vm.humidity)}
-      ${renderStat('下雨機率', vm.rainProbability)}
-      ${renderStat('警告狀態', vm.warningSummary, { emphasis: vm.warnings.some((w) => w.severe) })}
-    </div>
-    <div class="weather-details">
-      <div class="weather-detail-row">
-        <span class="weather-detail-label">今日最高／最低</span>
-        <span class="weather-detail-value">${escapeHtml(vm.todayHighLow)}</span>
+      <div class="weather-summary" role="list">
+        ${renderStat('相對濕度', vm.humidity)}
+        ${renderStat('下雨機率', vm.rainProbability)}
       </div>
-      <div class="weather-detail-row">
-        <span class="weather-detail-label">明天</span>
-        <span class="weather-detail-value">${escapeHtml(vm.tomorrowSummary)}</span>
-      </div>
-      <div class="weather-warnings">
-        <div class="weather-detail-label">生效警告</div>
-        <div class="weather-warn-chips">${warnChips}</div>
-        ${alertLines ? `<ul class="weather-alert-list">${alertLines}</ul>` : ''}
-      </div>
-      <div class="weather-meta">
-        <span>最後更新 ${escapeHtml(vm.updateTime)}</span>
-        ${vm.partial ? '<span class="weather-meta-partial">部分資料未能取得</span>' : ''}
+      <div class="weather-details">
+        <div class="weather-detail-row">
+          <span class="weather-detail-label">今日最高／最低</span>
+          <span class="weather-detail-value">${escapeHtml(vm.todayHighLow)}</span>
+        </div>
+        <div class="weather-detail-row">
+          <span class="weather-detail-label">明天</span>
+          <span class="weather-detail-value">${escapeHtml(vm.tomorrowSummary)}</span>
+        </div>
+        ${vm.warnings.length || alertLines ? `
+        <div class="weather-warnings">
+          <div class="weather-detail-label">生效警告</div>
+          <div class="weather-warn-chips">${warnChips}</div>
+          ${alertLines ? `<ul class="weather-alert-list">${alertLines}</ul>` : ''}
+        </div>` : ''}
+        <div class="weather-meta">
+          <span>最後更新 ${escapeHtml(vm.updateTime)}</span>
+          ${vm.partial ? '<span class="weather-meta-partial">部分資料未能取得</span>' : ''}
+        </div>
       </div>
     </div>`;
+
+  bindWeatherToggle(root);
+  syncWeatherOpen(root);
 }
 
 async function fetchWeatherSources() {

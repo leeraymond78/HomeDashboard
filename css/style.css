@@ -23,6 +23,7 @@
   --mtr: #0050ff;
   --gmb: #00ff00;
   --nwfb: #ffff00;
+  --socif: #00d4ff;
   --scheduled: #1e64ff;
   --error: #ff0000;
   --eta-normal: #ffff80;
@@ -249,11 +250,13 @@ body {
 .color-mtr { color: var(--mtr); }
 .color-gmb { color: var(--gmb); }
 .color-nwfb { color: var(--nwfb); }
+.color-socif { color: var(--socif); }
 
 .bg-kmb-express { background: rgba(255, 0, 0, 0.63); }
 .bg-kmb-local { background: rgba(0, 0, 255, 0.63); }
 .bg-mtr { background: rgba(0, 0, 255, 0.63); }
 .bg-gmb { background: rgba(0, 255, 0, 0.63); }
+.bg-socif { background: rgba(0, 212, 255, 0.63); }
 .bg-nwfb { background: rgba(255, 255, 0, 0.63); }
 .bg-airport { background: rgba(246, 127, 2, 0.63); }
 
@@ -284,7 +287,6 @@ body {
   justify-content: flex-end;
   gap: 8px;
   padding: 8px 8px calc(8px + var(--safe-bottom));
-  background: var(--bg);
   pointer-events: none;
 }
 
@@ -325,51 +327,55 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.weather-loading,
-.weather-error {
-  padding: 1rem;
+.weather-preview {
+  font-size: 16px;
+  color: var(--white-38);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 9rem;
 }
 
-.weather-header {
-  padding: 0.85rem 1rem 0.65rem;
+.weather-section.open .weather-preview {
+  color: var(--white-54);
 }
 
-.weather-title-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+.weather-preview-severe {
+  color: var(--error);
 }
 
-.weather-title {
+.weather-body .weather-location-en {
   margin: 0;
-  font-size: 22px;
-  font-weight: normal;
-  color: var(--white);
-}
-
-.weather-title-en {
+  padding: 0 1rem;
   font-size: 16px;
   color: var(--white-38);
 }
 
-.weather-desc {
-  margin: 0.35rem 0 0;
+.weather-body .weather-desc {
+  margin: 0;
+  padding: 0.35rem 1rem 0;
   font-size: 18px;
   color: var(--white-70);
   line-height: 1.35;
 }
 
-.weather-note {
-  margin: 0.25rem 0 0;
+.weather-body .weather-note {
+  margin: 0;
+  padding: 0.25rem 1rem 0;
   font-size: 14px;
   color: var(--white-38);
+}
+
+.weather-loading,
+.weather-error {
+  padding: 1rem;
 }
 
 .weather-summary {
   display: grid;
   grid-template-columns: 1fr 1fr;
   border-top: 1px solid var(--border);
+  margin-top: 0.5rem;
 }
 
 .weather-stat {

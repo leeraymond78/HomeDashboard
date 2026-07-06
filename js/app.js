@@ -18,6 +18,10 @@ const MTR_DEST = {
   SKW_CIR: '掃管笏',
 };
 
+const SOCIF_GEO = {
+  '281-1-1': { lat: 22.373628, lng: 113.991213 },
+};
+
 const MTR_GEO = {
   'K51-D100': { lat: 22.373628, lng: 113.991213 },
   'K51A-D080': { lat: 22.373628, lng: 113.991213 },
@@ -91,6 +95,9 @@ async function loadRouteStopGeo(rs) {
       const json = await res.json();
       const d = json.data.coordinates.wgs84;
       stopGeo.set(rs.stopId, { lat: parseFloat(d.latitude), lng: parseFloat(d.longitude) });
+    } else if (rs.type === 'socif') {
+      const key = `${rs.route}-${rs.routeSeq}-${rs.stopSeq}`;
+      if (SOCIF_GEO[key]) stopGeo.set(key, SOCIF_GEO[key]);
     }
   } catch {
     /* ignore */
@@ -99,6 +106,7 @@ async function loadRouteStopGeo(rs) {
 
 function firstRouteStopId(rs) {
   if (rs.type === 'kmb' || rs.type === 'nwfb') return rs.stop;
+  if (rs.type === 'socif') return `${rs.route}-${rs.routeSeq}-${rs.stopSeq}`;
   return rs.stopId;
 }
 
@@ -141,7 +149,7 @@ function updateLocation({ autoOpenNearby = false } = {}) {
 }
 
 function operatorClass(op) {
-  return { kmb: 'color-kmb', mtr: 'color-mtr', gmb: 'color-gmb', nwfb: 'color-nwfb' }[op] ?? '';
+  return { kmb: 'color-kmb', mtr: 'color-mtr', gmb: 'color-gmb', nwfb: 'color-nwfb', socif: 'color-socif' }[op] ?? '';
 }
 
 function isAirport(routeId) {
@@ -157,6 +165,7 @@ function expressInfo(routeId, operator) {
   }
   if (operator === 'mtr') return { text: '各停', cls: 'bg-mtr' };
   if (operator === 'gmb') return { text: '準急', cls: 'bg-gmb' };
+  if (operator === 'socif') return { text: '穿梭', cls: 'bg-socif' };
   return { text: 'ﾌﾂｳ', cls: 'bg-nwfb' };
 }
 
@@ -165,7 +174,7 @@ function translateRemark(operator, raw, isScheduled) {
     if (raw === '原定班次') return '時刻通り';
     return raw;
   }
-  if (operator === 'gmb') {
+  if (operator === 'gmb' || operator === 'socif') {
     if (raw === '未開出') return '発車待ち';
     return raw ?? '';
   }
@@ -294,6 +303,33 @@ async function gmbDestination(realRouteId, routeSeq) {
   }
 }
 
+async function fetchSocifEtas(routeStop) {
+  const url = `https://360-api.socif.co/api/eta/route-stop/${routeStop.route}/${routeStop.routeSeq}`;
+  const res = await fetch(url);
+  const json = await res.json();
+  const stopEta = (json.data?.eta ?? []).find((s) => s.stopSeq === routeStop.stopSeq);
+  if (!stopEta?.eta?.length) return [];
+  const dest = routeStop.dest ?? '';
+  const displayRoute = routeStop.routeId ?? String(routeStop.route);
+  return stopEta.eta.map((e) => {
+    const isScheduled = e.remarks_en === 'Scheduled';
+    const remark = translateRemark('socif', e.remarks_tc, isScheduled);
+    const etaTime = new Date(e.timestamp);
+    return {
+      routeId: displayRoute,
+      operator: 'socif',
+      express: expressInfo(displayRoute, 'socif'),
+      routeClass: operatorClass('socif'),
+      time: formatTime(etaTime),
+      dest,
+      mins: e.diff ?? Math.max(0, Math.round((etaTime - Date.now()) / 60000)),
+      remark,
+      etaClass: etaColorClass(isScheduled, e.remarks_tc),
+      etaTime,
+    };
+  });
+}
+
 async function fetchGmbEtas(routeStop) {
   const url = `https://data.etagmb.gov.hk/eta/stop/${routeStop.stopId}`;
   const res = await fetch(url);
@@ -331,6 +367,7 @@ async function fetchGroupEtas(group) {
         case 'nwfb': return fetchNwfbEtas(rs);
         case 'mtr': return fetchMtrEtas(rs);
         case 'gmb': return fetchGmbEtas(rs);
+        case 'socif': return fetchSocifEtas(rs);
         default: return [];
       }
     } catch {

@@ -4,6 +4,7 @@
       "title": "ゴールドコースト・九竜行",
       "open": false,
       "routeStops": [
+        { "type": "socif", "route": 281, "routeSeq": 1, "stopSeq": 1, "routeId": "281", "dest": "荃灣西站" },
         { "type": "kmb", "route": "52X", "bound": "O", "stop": "971554761E4413EF" },
         { "type": "kmb", "route": "61M", "bound": "O", "stop": "971554761E4413EF" },
         { "type": "kmb", "route": "53", "bound": "O", "stop": "971554761E4413EF" },
