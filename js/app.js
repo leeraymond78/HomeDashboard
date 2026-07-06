@@ -5,7 +5,10 @@ import { initPullToRefresh } from './pull-to-refresh.js';
 
 const REFRESH_INTERVAL_MS = 15_000;
 const LOCATION_THRESHOLD_M = 700;
+const HOME_REDIRECT_THRESHOLD_M = 1000;
+const GOLD_COAST_COORD = { lat: 22.373628, lng: 113.991213 };
 const flatView = document.documentElement.hasAttribute('data-flat-view');
+const isHomePage = document.documentElement.hasAttribute('data-home-page');
 const maxEtasPerGroup = (() => {
   const raw = document.documentElement.dataset.maxEtas;
   if (!raw) return Infinity;
@@ -144,9 +147,27 @@ function autoExpandNearby() {
   }
 }
 
+/**
+ * If this is the home page (data-home-page attribute present) and the user is
+ * more than HOME_REDIRECT_THRESHOLD_M metres away from Gold Coast, redirect to
+ * all.html so they see the full route list instead.
+ * @param {GeolocationPosition} pos
+ */
+function maybeRedirectAway(pos) {
+  if (!isHomePage) return;
+  const dist = distanceM(
+    { lat: pos.coords.latitude, lng: pos.coords.longitude },
+    GOLD_COAST_COORD,
+  );
+  if (dist > HOME_REDIRECT_THRESHOLD_M) {
+    window.location.replace('all.html');
+  }
+}
+
 function updateLocation({ autoOpenNearby = false } = {}) {
   return requestUserPosition().then((pos) => {
     if (!pos) return;
+    maybeRedirectAway(pos);
     if (autoOpenNearby) autoExpandNearby();
     updateAllGroups();
     if (autoOpenNearby) refreshOpenGroups();
@@ -615,7 +636,6 @@ function updateGroup(index) {
     const distEl = section.querySelector('.group-distance');
     const dist = distanceToGroup(group);
     if (dist != null) {
-      // Reuse formatDistance from location.js (fixes bug: was showing 0.5km instead of 500m)
       distEl.textContent = formatDistance(dist);
       distEl.hidden = false;
     } else {
@@ -631,7 +651,6 @@ function updateGroup(index) {
   const distEl = section.querySelector('.group-distance');
   const dist = distanceToGroup(group);
   if (dist != null) {
-    // Reuse formatDistance from location.js (fixes bug: was showing 0.5km instead of 500m)
     distEl.textContent = formatDistance(dist);
     distEl.hidden = false;
   } else {
