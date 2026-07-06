@@ -34,6 +34,8 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* Disable double-tap zoom while preserving pinch-to-zoom */
+  touch-action: manipulation;
 }
 
 body {
