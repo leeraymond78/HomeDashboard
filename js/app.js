@@ -1,5 +1,12 @@
 const REFRESH_INTERVAL_MS = 15_000;
 const LOCATION_THRESHOLD_M = 700;
+const flatView = document.documentElement.hasAttribute('data-flat-view');
+const maxEtasPerGroup = (() => {
+  const raw = document.documentElement.dataset.maxEtas;
+  if (!raw) return Infinity;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : Infinity;
+})();
 
 const MTR_DEST = {
   FT: '富泰',
@@ -48,6 +55,15 @@ async function loadConfig() {
   const res = await fetch('config.json');
   if (!res.ok) throw new Error('設定ファイルを読み込めません');
   config = await res.json();
+  applyGroupFilter();
+  if (flatView) config.groups.forEach((g) => { g.open = true; });
+}
+
+function applyGroupFilter() {
+  const filter = document.documentElement.dataset.groupFilter;
+  if (!filter) return;
+  const titles = new Set(filter.split('|').map((s) => s.trim()).filter(Boolean));
+  config.groups = config.groups.filter((g) => titles.has(g.title));
 }
 
 async function loadStopGeo() {
@@ -451,8 +467,9 @@ function syncGroupBody(index) {
   const body = section.querySelector('.group-body');
   const etas = groupEtas.get(index) ?? [];
   const state = groupState.get(index) ?? 'loading';
+  const displayEtas = etas.slice(0, maxEtasPerGroup);
 
-  if (!etas.length) {
+  if (!displayEtas.length) {
     if (state === 'loading') {
       showGroupMessage(body, 'loading', '読み込み中…');
       return;
@@ -468,11 +485,11 @@ function syncGroupBody(index) {
   const tbody = ensureEtaTable(body);
   const existing = [...tbody.querySelectorAll('.eta-row')];
 
-  etas.forEach((eta, i) => {
+  displayEtas.forEach((eta, i) => {
     if (existing[i]) patchEtaRow(existing[i], eta);
     else tbody.appendChild(createEtaRowElement(eta));
   });
-  existing.slice(etas.length).forEach((tr) => tr.remove());
+  existing.slice(displayEtas.length).forEach((tr) => tr.remove());
 
   setupScrollSpans(body);
 }
@@ -488,7 +505,20 @@ function escapeAttr(s) {
 function buildGroupsShell() {
   const container = document.getElementById('groups');
   container.innerHTML = config.groups
-    .map((group, i) => `
+    .map((group, i) => {
+      if (flatView) {
+        return `
+      <section class="group open group-flat" data-index="${i}">
+        <div class="group-header">
+          <span class="group-title">${escapeHtml(group.title)}</span>
+          <span class="group-trailing">
+            <span class="group-distance" hidden></span>
+          </span>
+        </div>
+        <div class="group-body"></div>
+      </section>`;
+      }
+      return `
       <section class="group" data-index="${i}">
         <button class="group-header" type="button" aria-expanded="false">
           <span class="group-title">${escapeHtml(group.title)}</span>
@@ -500,8 +530,11 @@ function buildGroupsShell() {
           </span>
         </button>
         <div class="group-body"></div>
-      </section>`)
+      </section>`;
+    })
     .join('');
+
+  if (flatView) return;
 
   container.addEventListener('click', (e) => {
     const btn = e.target.closest('.group-header');
@@ -526,6 +559,20 @@ function updateGroup(index) {
   const group = config.groups[index];
   const section = document.querySelector(`.group[data-index="${index}"]`);
   if (!section) return;
+
+  if (flatView) {
+    section.classList.add('open');
+    const distEl = section.querySelector('.group-distance');
+    const dist = distanceToGroup(group);
+    if (dist != null) {
+      distEl.textContent = formatDistance(dist);
+      distEl.hidden = false;
+    } else {
+      distEl.hidden = true;
+    }
+    syncGroupBody(index);
+    return;
+  }
 
   section.classList.toggle('open', group.open);
   section.querySelector('.group-header').setAttribute('aria-expanded', String(group.open));
@@ -571,9 +618,10 @@ function setupScrollSpans(root) {
 function updateLiveMinutes() {
   const now = Date.now();
   for (const [index, etas] of groupEtas.entries()) {
-    if (!config.groups[index]?.open) continue;
+    if (!flatView && !config.groups[index]?.open) continue;
     const rows = document.querySelectorAll(`.group[data-index="${index}"] .eta-row`);
-    etas.forEach((row, i) => {
+    const displayEtas = etas.slice(0, maxEtasPerGroup);
+    displayEtas.forEach((row, i) => {
       const mins = Math.max(0, Math.round((row.etaTime - now) / 60000));
       if (row.mins === mins) return;
       row.mins = mins;
@@ -590,7 +638,7 @@ const groupState = new Map();
 
 async function refreshGroup(index, { silent = false } = {}) {
   const group = config.groups[index];
-  if (!group.open) return;
+  if (!flatView && !group.open) return;
 
   if (!silent && !groupEtas.has(index)) {
     groupState.set(index, 'loading');
@@ -611,7 +659,9 @@ async function refreshGroup(index, { silent = false } = {}) {
 
 function refreshOpenGroups({ silent = true } = {}) {
   mtrCache.clear();
-  const open = config.groups.map((g, i) => (g.open ? i : -1)).filter((i) => i >= 0);
+  const open = flatView
+    ? config.groups.map((_, i) => i)
+    : config.groups.map((g, i) => (g.open ? i : -1)).filter((i) => i >= 0);
   return Promise.all(open.map((i) => refreshGroup(i, { silent })));
 }
 
@@ -631,8 +681,8 @@ async function init() {
     await loadConfig();
     await loadStopGeo();
     renderGroups();
-    await updateLocation({ autoOpenNearby: true });
-    if (!config.groups.some((g) => g.open)) refreshOpenGroups();
+    await updateLocation({ autoOpenNearby: !flatView });
+    if (flatView || !config.groups.some((g) => g.open)) refreshOpenGroups();
     startRefreshTimer();
     setInterval(updateRefreshTimer, 1000);
     setInterval(updateLiveMinutes, 30_000);

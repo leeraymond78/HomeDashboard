@@ -47,6 +47,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.page-nav {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.5rem 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-nav-link {
+  color: var(--white-54);
+  font-size: 16px;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.page-nav-link:active {
+  color: var(--white-70);
+}
+
 .groups {
   display: flex;
   flex-direction: column;
@@ -76,6 +94,15 @@ body {
 
 .group.open .group-header {
   color: var(--white);
+}
+
+.group-flat .group-header {
+  color: var(--white);
+  cursor: default;
+}
+
+.group-flat .group-body {
+  display: block;
 }
 
 .group-title {
@@ -288,8 +315,10 @@ body {
 }
 
 @media (min-width: 480px) {
+  .page-nav,
   .groups {
     max-width: 480px;
-    margin: 0 auto;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
