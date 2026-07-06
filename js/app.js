@@ -1,6 +1,7 @@
 import { loadWeatherSection, startWeatherRefresh } from './weather.js';
 import { distanceM, formatDistance, getUserPosition, requestUserPosition } from './location.js';
 import { escapeHtml, escapeAttr } from './utils.js';
+import { initPullToRefresh } from './pull-to-refresh.js';
 
 const REFRESH_INTERVAL_MS = 15_000;
 const LOCATION_THRESHOLD_M = 700;
@@ -722,6 +723,20 @@ function updateRefreshTimer() {
   el.textContent = `${secs}s`;
 }
 
+async function refreshAll({ spinButton = false } = {}) {
+  const btn = document.getElementById('refresh-btn');
+  if (spinButton) btn?.classList.add('spinning');
+  try {
+    await Promise.all([
+      updateLocation(),
+      refreshOpenGroups({ silent: true }),
+      loadWeatherSection(),
+    ]);
+  } finally {
+    if (spinButton) btn?.classList.remove('spinning');
+  }
+}
+
 async function init() {
   try {
     await loadConfig();
@@ -737,16 +752,8 @@ async function init() {
     setInterval(updateLiveMinutes, 30_000);
     updateRefreshTimer();
 
-    document.getElementById('refresh-btn').addEventListener('click', async (e) => {
-      const btn = e.currentTarget;
-      btn.classList.add('spinning');
-      await Promise.all([
-        updateLocation(),
-        refreshOpenGroups({ silent: true }),
-        loadWeatherSection(),
-      ]);
-      btn.classList.remove('spinning');
-    });
+    document.getElementById('refresh-btn').addEventListener('click', () => refreshAll({ spinButton: true }));
+    initPullToRefresh(() => refreshAll());
   } catch (err) {
     document.getElementById('groups').innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
   }
