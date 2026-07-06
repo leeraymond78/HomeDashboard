@@ -47,6 +47,28 @@ const HKO_STATIONS = {
   大美督: { lat: 22.4753, lng: 114.2375, en: 'Tai Mei Tuk' },
 };
 
+/** rhrread temperature station → rainfall.data district */
+const STATION_TO_RAINFALL_DISTRICT = {
+  京士柏: '油尖旺',
+  香港天文台: '油尖旺',
+  黃竹坑: '南區',
+  打鼓嶺: '北區',
+  流浮山: '元朗',
+  將軍澳: '西貢',
+  長洲: '離島區',
+  赤鱲角: '離島區',
+  青衣: '葵青',
+  荃灣可觀: '荃灣',
+  荃灣城門谷: '荃灣',
+  香港公園: '中西區',
+  筲箕灣: '東區',
+  跑馬地: '灣仔',
+  啟德跑道公園: '九龍城',
+  元朗公園: '元朗',
+  大美督: '大埔',
+  赤柱: '南區',
+};
+
 const RAINSTORM_LABELS = {
   WRAINA: '黃雨',
   WRAINR: '紅雨',
@@ -150,6 +172,37 @@ function pickHumidity(data) {
   return { value: match.value, unit: match.unit ?? 'percent', place: match.place ?? '' };
 }
 
+function rainfallDistrictForStation(stationPlace, rhrread) {
+  const rows = rhrread?.rainfall?.data ?? [];
+  const places = new Set(rows.map((row) => row.place));
+  if (places.has(stationPlace)) return stationPlace;
+  const mapped = STATION_TO_RAINFALL_DISTRICT[stationPlace];
+  if (mapped && places.has(mapped)) return mapped;
+  return null;
+}
+
+function pickRainfall(rhrread, stationPlace) {
+  const district = rainfallDistrictForStation(stationPlace, rhrread);
+  if (!district) return null;
+  const match = rhrread.rainfall.data.find((row) => row.place === district);
+  if (match?.max == null) return null;
+  return {
+    max: match.max,
+    min: match.min,
+    unit: match.unit ?? 'mm',
+    place: match.place,
+  };
+}
+
+function formatRainfall(rainfall) {
+  if (!rainfall) return WEATHER.missing;
+  const unit = rainfall.unit || 'mm';
+  if (rainfall.min != null && rainfall.min !== rainfall.max) {
+    return `${rainfall.min}–${rainfall.max}${unit}`;
+  }
+  return `${rainfall.max}${unit}`;
+}
+
 function hkoDateKey(date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -234,8 +287,8 @@ function buildWeatherViewModel({ rhrread, fnd, flw, warnsum, errors, station }) 
   const todayForecast = findForecastDay(fnd, todayKey);
   const tomorrowForecast = findForecastDay(fnd, tomorrowKey());
   const firstForecast = fnd?.weatherForecast?.[0] ?? null;
-  const rainDay = todayForecast ?? (firstForecast?.forecastDate === todayKey ? firstForecast : null);
   const todayTemps = todayForecast ?? (firstForecast?.forecastDate === todayKey ? firstForecast : null);
+  const rainfall = station ? pickRainfall(rhrread, station.place) : null;
 
   const warnings = parseWarnings(warnsum);
   const typhoonInfo = (flw?.tcInfo ?? '').trim();
@@ -249,15 +302,19 @@ function buildWeatherViewModel({ rhrread, fnd, flw, warnsum, errors, station }) 
   const humidityNote = humidity?.place && humidity.place !== station?.place
     ? `濕度資料來自${humidity.place}`
     : '';
+  const rainfallNote = rainfall?.place && rainfall.place !== station?.place
+    ? `雨量資料來自${rainfall.place}`
+    : '';
 
   const updateCandidates = [
     rhrread?.updateTime,
+    rhrread?.rainfall?.endTime,
     fnd?.updateTime,
     flw?.updateTime,
     ...warnings.map((w) => w.issueTime),
   ].filter(Boolean);
 
-  const dataNote = [buildLocationNote(station), humidityNote].filter(Boolean).join('；');
+  const dataNote = [buildLocationNote(station), humidityNote, rainfallNote].filter(Boolean).join('；');
 
   return {
     headerTitle: `${station?.place ?? WEATHER.missing} · ${temp?.value != null ? `${temp.value}°C` : WEATHER.missing}`,
@@ -267,7 +324,7 @@ function buildWeatherViewModel({ rhrread, fnd, flw, warnsum, errors, station }) 
     temperature: temp?.value != null ? `${temp.value}°C` : WEATHER.missing,
     weatherDesc: (flw?.forecastDesc ?? '').trim() || WEATHER.missing,
     humidity: humidity?.value != null ? `${humidity.value}%` : WEATHER.missing,
-    rainProbability: rainDay?.PSR?.trim() || WEATHER.missing,
+    rainfall: formatRainfall(rainfall),
     todayHighLow: formatTempRange(todayTemps?.forecastMaxtemp, todayTemps?.forecastMintemp),
     tomorrowSummary: tomorrowForecast
       ? `${tomorrowForecast.week} ${tomorrowForecast.forecastWeather}`.trim()
@@ -371,7 +428,7 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
       ${vm.dataNote ? `<p class="weather-note">${escapeHtml(vm.dataNote)}</p>` : ''}
       <div class="weather-summary" role="list">
         ${renderStat('相對濕度', vm.humidity)}
-        ${renderStat('下雨機率', vm.rainProbability)}
+        ${renderStat('降雨量', vm.rainfall)}
       </div>
       <div class="weather-details">
         <div class="weather-detail-row">
@@ -388,10 +445,6 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
           <div class="weather-warn-chips">${warnChips}</div>
           ${alertLines ? `<ul class="weather-alert-list">${alertLines}</ul>` : ''}
         </div>` : ''}
-        <div class="weather-meta">
-          <span>最後更新 ${escapeHtml(vm.updateTime)}</span>
-          ${vm.partial ? '<span class="weather-meta-partial">部分資料未能取得</span>' : ''}
-        </div>
       </div>
     </div>`;
 
