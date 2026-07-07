@@ -423,7 +423,12 @@ function buildGroupsShell() {
         <div class="group-body"></div>
       </section>`)
     .join('');
+}
 
+function bindGroupClicks() {
+  const container = document.getElementById('groups');
+  if (!container || container.dataset.bound) return;
+  container.dataset.bound = '1';
   container.addEventListener('click', (e) => {
     const btn = e.target.closest('.group-header');
     if (!btn) return;
@@ -475,6 +480,7 @@ function updateAllGroups() {
 
 function renderGroups() {
   buildGroupsShell();
+  bindGroupClicks();
   updateAllGroups();
 }
 

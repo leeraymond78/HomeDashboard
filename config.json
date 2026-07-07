@@ -23,6 +23,15 @@
       ]
     },
     {
+      "title": "深圳灣口岸",
+      "open": false,
+      "routeStops": [
+        { "type": "nwfb", "co": "CTB", "route": "B3", "dir": "I", "stop": "003208" },
+        { "type": "nwfb", "co": "CTB", "route": "B3X", "dir": "I", "stop": "003208" },
+        { "type": "nwfb", "co": "CTB", "route": "B3M", "dir": "O", "stop": "003208" }
+      ]
+    },
+    {
       "title": "TSTから帰宅",
       "open": false,
       "routeStops": [
