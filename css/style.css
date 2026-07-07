@@ -594,7 +594,12 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   flex-direction: column;
   height: 100dvh;
   overflow: hidden;
+  padding-top: 0;
   padding-bottom: 0;
+}
+
+.bus-detail-page .refresh-bar {
+  padding: 6px 8px;
 }
 
 .bus-detail-header {
@@ -667,7 +672,7 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  padding-bottom: calc(48px + var(--safe-bottom));
+  padding-bottom: 32px;
 }
 
 .bus-stop {
