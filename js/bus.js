@@ -11,6 +11,10 @@ import {
 } from './transit-api.js';
 
 const REFRESH_INTERVAL_MS = 15_000;
+const STOP_MAP_ZOOM = 15;
+const LANDSD_MAP_API = 'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz';
+const LANDSD_ATTRIBUTION =
+  '<img src="https://www.landsd.gov.hk/images/landsd_logo.svg" alt="" width="14" height="14"> Map from <a href="https://www.landsd.gov.hk/">Lands Department</a>';
 
 /** @type {import('./transit-api.js').RouteStopConfig | null} */
 let routeStop = null;
@@ -82,10 +86,18 @@ function initMap() {
   if (map) return;
   map = L.map('bus-map', {
     zoomControl: false,
-    attributionControl: false,
+    minZoom: 10,
   });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19,
+  L.tileLayer(`${LANDSD_MAP_API}/basemap/WGS84/{z}/{x}/{y}.png`, {
+    minZoom: 10,
+    maxZoom: 20,
+    maxNativeZoom: 20,
+    attribution: LANDSD_ATTRIBUTION,
+  }).addTo(map);
+  L.tileLayer(`${LANDSD_MAP_API}/label/hk/tc/WGS84/{z}/{x}/{y}.png`, {
+    minZoom: 10,
+    maxZoom: 20,
+    maxNativeZoom: 20,
   }).addTo(map);
 }
 
@@ -147,10 +159,7 @@ function updateMap({ currentIdx, closestIdx }) {
   const focusIdx = currentIdx >= 0 ? currentIdx : 0;
   const focus = routeStops[focusIdx];
   if (focus?.lat != null && focus?.lng != null && isValidCoord(focus.lat, focus.lng)) {
-    map.setView([focus.lat, focus.lng], 14);
-    if (coords.length > 1) {
-      map.fitBounds(L.latLngBounds(coords), { padding: [24, 24], maxZoom: 15 });
-    }
+    map.setView([focus.lat, focus.lng], STOP_MAP_ZOOM);
   }
 }
 
@@ -268,7 +277,7 @@ async function toggleStop(stop, forceOpen = false) {
     }
     const marker = markers.get(key);
     if (marker && stop.lat != null && stop.lng != null) {
-      map?.setView([stop.lat, stop.lng], 15, { animate: true });
+      map?.setView([stop.lat, stop.lng], STOP_MAP_ZOOM, { animate: true });
       marker.openTooltip();
     }
   } else {
