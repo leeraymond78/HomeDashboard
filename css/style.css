@@ -588,18 +588,14 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   background: rgba(255, 255, 255, 0.06);
 }
 
-/* Bus route detail page */
+/* Bus route detail page — content fills to screen bottom; safe area is scroll padding only */
 .bus-detail-page {
   display: flex;
   flex-direction: column;
   height: 100dvh;
   overflow: hidden;
-  padding-top: 0;
+  padding-top: var(--safe-top);
   padding-bottom: 0;
-}
-
-.bus-detail-page .refresh-bar {
-  padding: 6px 8px;
 }
 
 .bus-detail-header {
@@ -672,7 +668,7 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  padding-bottom: 32px;
+  padding-bottom: calc(40px + var(--safe-bottom));
 }
 
 .bus-stop {
