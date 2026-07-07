@@ -7,7 +7,6 @@ import {
   formatTime,
   operatorClass,
   parseRouteStop,
-  routeStopId,
   routeTitle,
 } from './transit-api.js';
 
@@ -31,12 +30,6 @@ let map = null;
 let routeLine = null;
 /** @type {Map<string, L.Marker>} */
 const markers = new Map();
-
-function configuredStopId() {
-  if (!routeStop) return '';
-  if (routeStop.type === 'socif') return String(routeStop.stopSeq);
-  return routeStopId(routeStop);
-}
 
 function stopMatchesConfigured(stop) {
   if (!routeStop) return false;
@@ -76,9 +69,13 @@ function operatorForRouteStop() {
 
 function initBackLink() {
   const params = new URLSearchParams(window.location.search);
-  const back = params.get('back') || './';
+  const back = params.get('back');
   const link = document.getElementById('back-link');
-  link.href = back === 'index.html' ? './' : back;
+  if (!back || back.includes('://') || back.startsWith('//')) {
+    link.href = './';
+    return;
+  }
+  link.href = back === 'index.html' || back === 'all.html' ? './' : back;
 }
 
 function initMap() {

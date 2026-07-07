@@ -195,6 +195,14 @@ async function loadMtrStops() {
   return mtrCsvByStopId;
 }
 
+/** @param {string} stopId */
+export async function getMtrStopGeo(stopId) {
+  const stops = await loadMtrStops();
+  const row = stops.get(stopId);
+  if (row) return { lat: row.lat, lng: row.lng };
+  return MTR_GEO[stopId] ?? null;
+}
+
 export async function fetchKmbEtas(routeStop) {
   const serviceType = routeStop.service_type ?? 1;
   const url = `https://data.etabus.gov.hk/v1/transport/kmb/eta/${routeStop.stop}/${routeStop.route}/${serviceType}`;

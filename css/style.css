@@ -100,12 +100,6 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   border-bottom: 1px solid var(--border);
 }
 
-.page-nav--bottom {
-  padding: 0.5rem 1rem;
-  border-bottom: none;
-  border-top: 1px solid var(--border);
-}
-
 .page-nav--back {
   justify-content: flex-start;
   padding: 0.65rem 1rem;
@@ -162,15 +156,6 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 
 .group.open .group-header {
   color: var(--white);
-}
-
-.group-flat .group-header {
-  color: var(--white);
-  cursor: default;
-}
-
-.group-flat .group-body {
-  display: block;
 }
 
 .group-title {

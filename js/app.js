@@ -3,24 +3,16 @@ import { distanceM, formatDistance, getUserPosition, requestUserPosition } from 
 import { escapeHtml, escapeAttr } from './utils.js';
 import { initPullToRefresh } from './pull-to-refresh.js';
 import {
-  MTR_GEO,
   SOCIF_GEO,
   clearMtrCache,
   fetchEtas,
+  getMtrStopGeo,
   routeStopId,
   serializeRouteStop,
 } from './transit-api.js';
 
 const REFRESH_INTERVAL_MS = 15_000;
 const LOCATION_THRESHOLD_M = 700;
-const HOME_REDIRECT_THRESHOLD_M = 1000;
-const GOLD_COAST_COORD = { lat: 22.373628, lng: 113.991213 };
-const flatView = document.documentElement.hasAttribute('data-flat-view');
-const isHomePage = document.documentElement.hasAttribute('data-home-page');
-
-// Only redirect on first launch. If the user navigated back from all.html
-// (indicated by ?back=1), skip redirect entirely for this session.
-const skipRedirect = new URLSearchParams(location.search).has('back');
 
 const maxEtasPerGroup = (() => {
   const raw = document.documentElement.dataset.maxEtas;
@@ -53,15 +45,6 @@ async function loadConfig() {
   const res = await fetch('config.json');
   if (!res.ok) throw new Error('設定ファイルを読み込めません');
   config = await res.json();
-  applyGroupFilter();
-  if (flatView) config.groups.forEach((g) => { g.open = true; });
-}
-
-function applyGroupFilter() {
-  const filter = document.documentElement.dataset.groupFilter;
-  if (!filter) return;
-  const titles = new Set(filter.split('|').map((s) => s.trim()).filter(Boolean));
-  config.groups = config.groups.filter((g) => titles.has(g.title));
 }
 
 async function loadStopGeo() {
@@ -76,8 +59,9 @@ async function loadRouteStopGeo(rs) {
       const json = await res.json();
       const d = json.data;
       stopGeo.set(rs.stop, { lat: parseFloat(d.lat), lng: parseFloat(d.long) });
-    } else if (rs.type === 'mtr' && MTR_GEO[rs.stopId]) {
-      stopGeo.set(rs.stopId, MTR_GEO[rs.stopId]);
+    } else if (rs.type === 'mtr') {
+      const geo = await getMtrStopGeo(rs.stopId);
+      if (geo) stopGeo.set(rs.stopId, geo);
     } else if (rs.type === 'nwfb') {
       const res = await fetch(`https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/stop/${rs.stop}`);
       const json = await res.json();
@@ -121,37 +105,36 @@ function autoExpandNearby() {
   }
 }
 
-/**
- * On first launch of the home page, if the user is more than
- * HOME_REDIRECT_THRESHOLD_M metres away from Gold Coast, redirect to all.html.
- * Skipped when the user navigated back from all.html (?back=1).
- * @param {GeolocationPosition} pos
- */
-function maybeRedirectAway(pos) {
-  if (!isHomePage || skipRedirect) return;
-  const dist = distanceM(
-    { lat: pos.coords.latitude, lng: pos.coords.longitude },
-    GOLD_COAST_COORD,
-  );
-  if (dist > HOME_REDIRECT_THRESHOLD_M) {
-    window.location.replace('all.html');
-  }
+function sortGroupsByDistance() {
+  config.groups = config.groups
+    .map((group, i) => ({ group, i, dist: distanceToGroup(group) }))
+    .sort((a, b) => {
+      const aNear = a.dist != null && a.dist < LOCATION_THRESHOLD_M;
+      const bNear = b.dist != null && b.dist < LOCATION_THRESHOLD_M;
+      if (aNear !== bNear) return aNear ? -1 : 1;
+      if (a.dist != null && b.dist != null && a.dist !== b.dist) return a.dist - b.dist;
+      return a.i - b.i;
+    })
+    .map(({ group }) => group);
 }
 
-/** Whether the launch-time redirect check has already been performed. */
-let redirectChecked = false;
+function applyLocationSort() {
+  sortGroupsByDistance();
+  autoExpandNearby();
+}
 
-function updateLocation({ autoOpenNearby = false } = {}) {
+function updateLocation({ resort = false } = {}) {
   return requestUserPosition().then((pos) => {
     if (!pos) return;
-    // Only run the redirect check once per page load (on launch).
-    if (!redirectChecked) {
-      redirectChecked = true;
-      maybeRedirectAway(pos);
+    if (resort) {
+      groupEtas.clear();
+      groupState.clear();
+      groupShowAllEtas.clear();
+      applyLocationSort();
+      renderGroups();
     }
-    if (autoOpenNearby) autoExpandNearby();
     updateAllGroups();
-    if (autoOpenNearby) refreshOpenGroups();
+    refreshOpenGroups();
   });
 }
 
@@ -356,20 +339,7 @@ function syncGroupBody(index) {
 function buildGroupsShell() {
   const container = document.getElementById('groups');
   container.innerHTML = config.groups
-    .map((group, i) => {
-      if (flatView) {
-        return `
-      <section class="group open group-flat" data-index="${i}">
-        <div class="group-header">
-          <span class="group-title">${escapeHtml(group.title)}</span>
-          <span class="group-trailing">
-            <span class="group-distance" hidden></span>
-          </span>
-        </div>
-        <div class="group-body"></div>
-      </section>`;
-      }
-      return `
+    .map((group, i) => `
       <section class="group" data-index="${i}">
         <button class="group-header" type="button" aria-expanded="false">
           <span class="group-title">${escapeHtml(group.title)}</span>
@@ -381,11 +351,8 @@ function buildGroupsShell() {
           </span>
         </button>
         <div class="group-body"></div>
-      </section>`;
-    })
+      </section>`)
     .join('');
-
-  if (flatView) return;
 
   container.addEventListener('click', (e) => {
     const btn = e.target.closest('.group-header');
@@ -410,20 +377,6 @@ function updateGroup(index) {
   const group = config.groups[index];
   const section = document.querySelector(`.group[data-index="${index}"]`);
   if (!section) return;
-
-  if (flatView) {
-    section.classList.add('open');
-    const distEl = section.querySelector('.group-distance');
-    const dist = distanceToGroup(group);
-    if (dist != null) {
-      distEl.textContent = formatDistance(dist);
-      distEl.hidden = false;
-    } else {
-      distEl.hidden = true;
-    }
-    syncGroupBody(index);
-    return;
-  }
 
   section.classList.toggle('open', group.open);
   section.querySelector('.group-header').setAttribute('aria-expanded', String(group.open));
@@ -469,7 +422,7 @@ function setupScrollSpans(root) {
 function updateLiveMinutes() {
   const now = Date.now();
   for (const [index, etas] of groupEtas.entries()) {
-    if (!flatView && !config.groups[index]?.open) continue;
+    if (!config.groups[index]?.open) continue;
     const rows = document.querySelectorAll(`.group[data-index="${index}"] .eta-row`);
     const displayEtas = etas.slice(0, etasLimitForGroup(index));
     displayEtas.forEach((row, i) => {
@@ -484,7 +437,7 @@ function updateLiveMinutes() {
 
 async function refreshGroup(index, { silent = false } = {}) {
   const group = config.groups[index];
-  if (!flatView && !group.open) return;
+  if (!group.open) return;
 
   if (!silent && !groupEtas.has(index)) {
     groupState.set(index, 'loading');
@@ -505,9 +458,7 @@ async function refreshGroup(index, { silent = false } = {}) {
 
 function refreshOpenGroups({ silent = true } = {}) {
   clearMtrCache();
-  const open = flatView
-    ? config.groups.map((_, i) => i)
-    : config.groups.map((g, i) => (g.open ? i : -1)).filter((i) => i >= 0);
+  const open = config.groups.map((g, i) => (g.open ? i : -1)).filter((i) => i >= 0);
   return Promise.all(open.map((i) => refreshGroup(i, { silent })));
 }
 
@@ -527,8 +478,7 @@ async function refreshAll({ spinButton = false } = {}) {
   if (spinButton) btn?.classList.add('spinning');
   try {
     await Promise.all([
-      updateLocation(),
-      refreshOpenGroups({ silent: true }),
+      updateLocation({ resort: true }),
       loadWeatherSection(),
     ]);
   } finally {
@@ -540,11 +490,13 @@ async function init() {
   try {
     await loadConfig();
     await loadStopGeo();
+    await requestUserPosition();
+    applyLocationSort();
     renderGroups();
-    await updateLocation({ autoOpenNearby: !flatView });
+    updateAllGroups();
     loadWeatherSection();
     startWeatherRefresh();
-    if (flatView || !config.groups.some((g) => g.open)) refreshOpenGroups();
+    refreshOpenGroups();
     startRefreshTimer();
     setInterval(updateRefreshTimer, 1000);
     setInterval(updateLiveMinutes, 30_000);
