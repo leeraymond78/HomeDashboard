@@ -22,8 +22,6 @@ const TD_HEADWAY_BASE_URL = 'https://static.data.gov.hk/td/pt-headway-tc';
 const TD_HEADWAY_URLS = {
   routes: `${TD_HEADWAY_BASE_URL}/routes.txt`,
   trips: `${TD_HEADWAY_BASE_URL}/trips.txt`,
-  stops: `${TD_HEADWAY_BASE_URL}/stops.txt`,
-  stopTimes: `${TD_HEADWAY_BASE_URL}/stop_times.txt`,
   frequencies: `${TD_HEADWAY_BASE_URL}/frequencies.txt`,
   calendar: `${TD_HEADWAY_BASE_URL}/calendar.txt`,
   calendarDates: `${TD_HEADWAY_BASE_URL}/calendar_dates.txt`,
@@ -57,6 +55,7 @@ const tdHeadwayTextPromises = new Map();
 const tdHeadwayRoutePromises = new Map();
 let matchedHeadwayVariant = null;
 let timetableVisible = false;
+let headwayLoadPromise = null;
 
 function stopMatchesConfigured(stop) {
   if (!routeStop) return false;
@@ -118,10 +117,30 @@ function initTimetableButton() {
   if (btn.dataset.bound) return;
   btn.dataset.bound = '1';
   btn.hidden = true;
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
+    await ensureHeadwayFeatures();
     timetableVisible = !timetableVisible;
     renderTimetablePanel();
   });
+}
+
+function scheduleHeadwayFeatures() {
+  if (!routeHeadwayKey() || !routeStops.length) return;
+  const run = () => {
+    headwayLoadPromise ??= initHeadwayFeatures();
+  };
+  if ('requestIdleCallback' in globalThis) {
+    requestIdleCallback(run, { timeout: 4000 });
+  } else {
+    setTimeout(run, 800);
+  }
+}
+
+function ensureHeadwayFeatures() {
+  if (!headwayLoadPromise) {
+    headwayLoadPromise = initHeadwayFeatures();
+  }
+  return headwayLoadPromise;
 }
 
 async function loadTdHeadwayData() {
@@ -228,6 +247,60 @@ async function readTdCsv(name) {
   return parseCsv(text);
 }
 
+function parseCsvFiltered(text, predicate) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  let header = null;
+
+  const flushRow = () => {
+    row.push(field);
+    if (!header) {
+      header = row;
+    } else if (row.length && row.some((value) => value !== '')) {
+      const record = Object.fromEntries(header.map((name, idx) => [name, row[idx] ?? '']));
+      if (predicate(record)) rows.push(record);
+    }
+    row = [];
+    field = '';
+  };
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(field);
+      field = '';
+    } else if (ch === '\n') {
+      flushRow();
+    } else if (ch !== '\r') {
+      field += ch;
+    }
+  }
+  if (field || row.length) flushRow();
+  return rows;
+}
+
+async function readTdCsvFiltered(name, predicate) {
+  const text = await fetchTdHeadwayText(TD_HEADWAY_URLS[name]);
+  return parseCsvFiltered(text, predicate);
+}
+
 function tdOperatorMatches(type, agencyId) {
   return TD_OPERATOR_AGENCIES[type]?.has(agencyId) ?? false;
 }
@@ -259,48 +332,32 @@ function buildCalendarExceptionsMap(rows) {
 async function buildTdHeadwayRouteData(key) {
   if (!routeStop) return null;
   const [type, route] = key.split(':');
-  const [routesRows, tripsRows, stopRows, stopTimesRows, frequencyRows, calendarRows, calendarDateRows] = await Promise.all([
-    readTdCsv('routes'),
-    readTdCsv('trips'),
-    readTdCsv('stops'),
-    readTdCsv('stopTimes'),
-    readTdCsv('frequencies'),
+  const routesRows = await readTdCsv('routes');
+  const selectedRoutes = routesRows.filter((row) => row.route_short_name === route && tdOperatorMatches(type, row.agency_id));
+  if (!selectedRoutes.length) return null;
+  const selectedRouteIds = new Set(selectedRoutes.map((row) => row.route_id));
+  const routeLongNameById = new Map(selectedRoutes.map((row) => [row.route_id, row.route_long_name]));
+
+  const tripsRows = await readTdCsvFiltered('trips', (row) => selectedRouteIds.has(row.route_id));
+  const selectedTripIds = new Set(tripsRows.map((row) => row.trip_id));
+  const [filteredFrequencies, calendarRows, calendarDateRows] = await Promise.all([
+    readTdCsvFiltered('frequencies', (row) => selectedTripIds.has(row.trip_id)),
     readTdCsv('calendar'),
     readTdCsv('calendarDates'),
   ]);
 
-  const selectedRoutes = routesRows.filter((row) => row.route_short_name === route && tdOperatorMatches(type, row.agency_id));
-  if (!selectedRoutes.length) return null;
-  const selectedRouteIds = new Set(selectedRoutes.map((row) => row.route_id));
-  const stopNameById = new Map(stopRows.map((row) => [row.stop_id, row.stop_name]));
   const calendars = buildCalendarMap(calendarRows);
   const calendarExceptions = buildCalendarExceptionsMap(calendarDateRows);
 
   const tripsByRoute = new Map();
   for (const row of tripsRows) {
-    if (!selectedRouteIds.has(row.route_id)) continue;
     const list = tripsByRoute.get(row.route_id) ?? [];
     list.push(row);
     tripsByRoute.set(row.route_id, list);
   }
 
-  const selectedTripIds = new Set();
-  for (const rows of tripsByRoute.values()) {
-    for (const row of rows) selectedTripIds.add(row.trip_id);
-  }
-
-  const stopTimesByTrip = new Map();
-  for (const row of stopTimesRows) {
-    if (!selectedTripIds.has(row.trip_id)) continue;
-    const list = stopTimesByTrip.get(row.trip_id) ?? [];
-    list.push(row);
-    stopTimesByTrip.set(row.trip_id, list);
-  }
-  stopTimesByTrip.forEach((rows) => rows.sort((a, b) => parseInt(a.stop_sequence, 10) - parseInt(b.stop_sequence, 10)));
-
   const frequenciesByTrip = new Map();
-  for (const row of frequencyRows) {
-    if (!selectedTripIds.has(row.trip_id)) continue;
+  for (const row of filteredFrequencies) {
     const list = frequenciesByTrip.get(row.trip_id) ?? [];
     list.push({
       startTime: row.start_time,
@@ -320,18 +377,11 @@ async function buildTdHeadwayRouteData(key) {
       const gtfsBound = parts[1];
       const variant = variants.get(gtfsBound) ?? {
         gtfsBound,
-        stops: [],
+        routeLongName: routeLongNameById.get(routeRow.route_id) ?? '',
         serviceIds: new Set(),
         timetableByServiceId: new Map(),
       };
       variant.serviceIds.add(trip.service_id);
-      if (!variant.stops.length && stopTimesByTrip.get(trip.trip_id)) {
-        variant.stops = stopTimesByTrip.get(trip.trip_id).map((row) => ({
-          stopId: row.stop_id,
-          seq: parseInt(row.stop_sequence, 10),
-          name: stopNameById.get(row.stop_id) ?? row.stop_id,
-        }));
-      }
       const freqRows = frequenciesByTrip.get(trip.trip_id) ?? [];
       if (freqRows.length) {
         const current = variant.timetableByServiceId.get(trip.service_id) ?? [];
@@ -343,12 +393,12 @@ async function buildTdHeadwayRouteData(key) {
 
     const normalizedVariants = [...variants.values()].map((variant) => ({
       gtfsBound: variant.gtfsBound,
-      stops: variant.stops,
+      routeLongName: variant.routeLongName,
       serviceIds: [...variant.serviceIds].sort(),
       calendar: Object.fromEntries([...variant.serviceIds].filter((id) => calendars[id]).map((id) => [id, calendars[id]])),
       calendarExceptions: Object.fromEntries([...variant.serviceIds].filter((id) => calendarExceptions.has(id)).map((id) => [id, calendarExceptions.get(id)])),
       timetableByServiceId: Object.fromEntries([...variant.timetableByServiceId.entries()].map(([serviceId, rows]) => [serviceId, rows.sort((a, b) => a.startTime.localeCompare(b.startTime))])),
-    })).filter((variant) => variant.stops.length);
+    })).filter((variant) => Object.values(variant.timetableByServiceId).some((rows) => rows.length));
 
     if (!bestRouteData || normalizedVariants.length > bestRouteData.variants.length) {
       bestRouteData = { variants: normalizedVariants };
@@ -420,49 +470,22 @@ function stopNameScore(appName, gtfsName) {
 }
 
 function variantMatchScore(variant) {
-  const lenDiffPenalty = Math.abs(routeStops.length - variant.stops.length) * 3;
-  let score = -lenDiffPenalty;
-  const limit = Math.min(routeStops.length, variant.stops.length);
-  for (let i = 0; i < limit; i += 1) {
-    score += stopNameScore(routeStops[i].name, variant.stops[i].name);
-  }
-  if (routeStops.length && variant.stops.length) {
-    score += stopNameScore(routeStops[0].name, variant.stops[0].name) * 4;
-    score += stopNameScore(routeStops.at(-1).name, variant.stops.at(-1).name) * 5;
-  }
+  const [orig = '', dest = ''] = String(variant.routeLongName ?? '').split(/\s*-\s*/);
+  const appBound = routeStop?.bound ?? routeStop?.dir;
+  const startName = routeStops[0]?.name ?? '';
+  const endName = routeStops.at(-1)?.name ?? '';
+  let score = Object.values(variant.timetableByServiceId ?? {}).reduce((total, rows) => total + rows.length, 0);
+
+  const outboundFit = stopNameScore(startName, orig) + stopNameScore(endName, dest);
+  const inboundFit = stopNameScore(startName, dest) + stopNameScore(endName, orig);
+  if (appBound === 'O') score += outboundFit * 5;
+  else if (appBound === 'I') score += inboundFit * 5;
+  else score += Math.max(outboundFit, inboundFit) * 3;
+
+  if (appBound === 'O' && variant.gtfsBound === '1') score += 4;
+  if (appBound === 'I' && variant.gtfsBound === '2') score += 4;
+
   return score;
-}
-
-function alignVariantStops(variant) {
-  if (!variant?.stops?.length) return [];
-  if (variant.stops.length === routeStops.length) {
-    return routeStops.map((_, index) => index);
-  }
-
-  const indexes = [];
-  let searchStart = 0;
-  for (const stop of routeStops) {
-    let bestIndex = -1;
-    let bestScore = 0;
-    const searchEnd = Math.min(variant.stops.length, searchStart + 4);
-    for (let i = searchStart; i < searchEnd; i += 1) {
-      const score = stopNameScore(stop.name, variant.stops[i].name);
-      if (score > bestScore) {
-        bestScore = score;
-        bestIndex = i;
-      }
-    }
-    if (bestIndex >= 0 && bestScore >= 2) {
-      indexes.push(bestIndex);
-      searchStart = bestIndex + 1;
-    } else if (searchStart < variant.stops.length) {
-      indexes.push(searchStart);
-      searchStart += 1;
-    } else {
-      indexes.push(-1);
-    }
-  }
-  return indexes;
 }
 
 function isServiceActive(service, exceptions, date) {
@@ -949,7 +972,6 @@ async function init() {
 
   try {
     routeStops = await fetchRouteStops(routeStop);
-    await initHeadwayFeatures();
     const title = await routeTitle(routeStop, routeStops);
     document.getElementById('bus-title').textContent = title;
 
@@ -966,6 +988,7 @@ async function init() {
 
     renderStops({ currentIdx, closestIdx });
     lastRefresh = new Date();
+    scheduleHeadwayFeatures();
 
     requestAnimationFrame(() => {
       map?.invalidateSize();
