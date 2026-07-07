@@ -23,11 +23,27 @@
         </svg>
         戻る
       </a>
+      <div class="bus-detail-actions">
+        <button id="timetable-btn" class="page-nav-link bus-detail-action-btn" type="button" hidden>
+          時刻表
+        </button>
+        <button id="flip-bound-btn" class="page-nav-link bus-detail-action-btn" type="button" hidden>
+          方向切替
+        </button>
+      </div>
     </nav>
     <h1 id="bus-title" class="bus-detail-title">読み込み中…</h1>
   </header>
 
   <div id="bus-map" class="bus-map" aria-hidden="true"></div>
+
+  <section id="bus-timetable-panel" class="bus-timetable-panel" hidden>
+    <div class="bus-timetable-panel-head">
+      <h2 class="bus-timetable-title">時刻表</h2>
+      <span id="bus-timetable-subtitle" class="bus-timetable-subtitle"></span>
+    </div>
+    <div id="bus-timetable-body"></div>
+  </section>
 
   <main id="bus-stops" class="bus-stops" aria-live="polite">
     <div class="loading">読み込み中…</div>

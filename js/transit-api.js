@@ -36,6 +36,10 @@ const mtrCache = new Map();
 const gmbDestCache = new Map();
 /** @type {Map<string, { lat: number, lng: number, name: string }>} */
 const stopDetailCache = new Map();
+/** @type {Map<string, any>} */
+const socifRouteCache = new Map();
+/** @type {Map<string, any[]>} */
+const socifWeekdayScheduleCache = new Map();
 /** @type {Map<string, { nameChi: string, lat: number, lng: number, direction: string, seq: number }> | null} */
 let mtrCsvByStopId = null;
 
@@ -184,6 +188,26 @@ async function fetchSocifStop(stopId) {
   };
   stopDetailCache.set(`socif:${stopId}`, info);
   return info;
+}
+
+export async function fetchSocifRoute(routeId) {
+  const key = String(routeId);
+  if (socifRouteCache.has(key)) return socifRouteCache.get(key);
+  const res = await fetch(`https://360-api.socif.co/api/route/${routeId}`);
+  const json = await res.json();
+  const route = json.data?.[0] ?? null;
+  socifRouteCache.set(key, route);
+  return route;
+}
+
+export async function fetchSocifWeekdaySchedule(routeId, weekdayIndex) {
+  const key = `${routeId}:${weekdayIndex}`;
+  if (socifWeekdayScheduleCache.has(key)) return socifWeekdayScheduleCache.get(key);
+  const res = await fetch(`https://360-api.socif.co/api/weekdaySchedule/${routeId}/${weekdayIndex}`);
+  const json = await res.json();
+  const schedules = json.data ?? [];
+  socifWeekdayScheduleCache.set(key, schedules);
+  return schedules;
 }
 
 async function loadMtrStops() {

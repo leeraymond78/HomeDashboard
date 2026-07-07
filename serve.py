@@ -21,6 +21,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+class ReusableTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+
 def ensure_cert():
     if os.path.exists(CERT) and os.path.exists(KEY):
         return
@@ -43,7 +47,7 @@ def local_ip():
 
 if __name__ == '__main__':
     use_https = '--https' in sys.argv
-    with socketserver.TCPServer(('', PORT), Handler) as httpd:
+    with ReusableTCPServer(('', PORT), Handler) as httpd:
         if use_https:
             ensure_cert()
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
