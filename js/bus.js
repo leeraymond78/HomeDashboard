@@ -32,6 +32,8 @@ const TD_OPERATOR_AGENCIES = {
   kmb: new Set(['KMB', 'KMB+CTB']),
   nwfb: new Set(['CTB', 'KMB+CTB', 'LWB+CTB']),
 };
+const TD_HEADWAY_CACHE_NAME = 'td-headway-tc-v1';
+const TD_HEADWAY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** @type {import('./transit-api.js').RouteStopConfig | null} */
 let routeStop = null;
@@ -131,12 +133,48 @@ async function loadTdHeadwayData() {
   return tdHeadwayRoutePromises.get(key);
 }
 
+async function readTdHeadwayCache(url) {
+  if (!('caches' in globalThis)) return null;
+  try {
+    const cache = await caches.open(TD_HEADWAY_CACHE_NAME);
+    const cached = await cache.match(url);
+    if (!cached) return null;
+    const cachedAt = Number(cached.headers.get('x-cached-at'));
+    if (!Number.isFinite(cachedAt) || Date.now() - cachedAt > TD_HEADWAY_CACHE_TTL_MS) {
+      await cache.delete(url);
+      return null;
+    }
+    return cached.text();
+  } catch {
+    return null;
+  }
+}
+
+async function writeTdHeadwayCache(url, text) {
+  if (!('caches' in globalThis)) return;
+  try {
+    const cache = await caches.open(TD_HEADWAY_CACHE_NAME);
+    const headers = new Headers({
+      'Content-Type': 'text/plain',
+      'x-cached-at': String(Date.now()),
+    });
+    await cache.put(url, new Response(text, { headers }));
+  } catch {
+    /* ignore quota / private-mode errors */
+  }
+}
+
 async function fetchTdHeadwayText(url) {
   if (!tdHeadwayTextPromises.has(url)) {
-    tdHeadwayTextPromises.set(url, fetch(url, { cache: 'no-store' }).then(async (res) => {
+    tdHeadwayTextPromises.set(url, (async () => {
+      const cached = await readTdHeadwayCache(url);
+      if (cached != null) return cached;
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`班次データを読み込めません: ${url}`);
-      return res.text();
-    }));
+      const text = await res.text();
+      await writeTdHeadwayCache(url, text);
+      return text;
+    })());
   }
   return tdHeadwayTextPromises.get(url);
 }
