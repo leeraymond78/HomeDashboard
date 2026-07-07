@@ -1,5 +1,5 @@
 import { loadWeatherSection, startWeatherRefresh } from './weather.js';
-import { distanceM, formatDistance, getUserPosition, requestUserPosition } from './location.js';
+import { distanceM, formatDistance, bootstrapLocation, geolocationBlockReason, getGeolocationPermission, getLastGeoError, getUserPosition, requestUserPosition } from './location.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { initPullToRefresh } from './pull-to-refresh.js';
 import {
@@ -125,6 +125,7 @@ function applyLocationSort() {
 
 function updateLocation({ resort = false } = {}) {
   return requestUserPosition().then((pos) => {
+    if (pos) hideLocationPrompt();
     if (!pos) return;
     if (resort) {
       groupEtas.clear();
@@ -135,6 +136,71 @@ function updateLocation({ resort = false } = {}) {
     }
     updateAllGroups();
     refreshOpenGroups();
+  });
+}
+
+function hideLocationPrompt() {
+  document.getElementById('location-prompt')?.setAttribute('hidden', '');
+}
+
+async function showLocationPrompt(status) {
+  const prompt = document.getElementById('location-prompt');
+  const btn = document.getElementById('location-prompt-btn');
+  if (!prompt || !btn) return;
+
+  if (status === 'granted' || getUserPosition()) {
+    hideLocationPrompt();
+    return;
+  }
+
+  prompt.hidden = false;
+  if (status === 'denied') {
+    btn.textContent = '設定で位置情報を許可してください';
+    return;
+  }
+  if (status === 'unavailable') {
+    btn.disabled = false;
+    btn.textContent = '位置情報を取得できませんでした。もう一度お試しください';
+    return;
+  }
+  if (status === 'unsupported') {
+    btn.textContent = 'この端末では位置情報を利用できません';
+    btn.disabled = true;
+    return;
+  }
+  if (status === 'insecure') {
+    btn.textContent = 'HTTPS接続が必要です（http://192.168… では位置情報を利用できません）';
+    btn.disabled = true;
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = '近くの停留所を表示（位置情報を許可）';
+}
+
+function applyLocationFromPosition(pos) {
+  if (!pos) return false;
+  hideLocationPrompt();
+  applyLocationSort();
+  renderGroups();
+  updateAllGroups();
+  refreshOpenGroups();
+  return true;
+}
+
+function setupLocationPrompt() {
+  document.getElementById('location-prompt-btn')?.addEventListener('click', () => {
+    const block = geolocationBlockReason();
+    if (block) {
+      showLocationPrompt(block);
+      return;
+    }
+    // Call getCurrentPosition synchronously from the tap handler (required on iOS).
+    requestUserPosition().then((pos) => {
+      if (applyLocationFromPosition(pos)) return;
+      const err = getLastGeoError();
+      if (err?.code === 1) showLocationPrompt('denied');
+      else showLocationPrompt('unavailable');
+    });
   });
 }
 
@@ -490,9 +556,16 @@ async function init() {
   try {
     await loadConfig();
     await loadStopGeo();
-    await requestUserPosition();
-    applyLocationSort();
     renderGroups();
+
+    const locStatus = await bootstrapLocation();
+    if (getUserPosition()) {
+      applyLocationSort();
+      renderGroups();
+    }
+    await showLocationPrompt(locStatus);
+    setupLocationPrompt();
+
     updateAllGroups();
     loadWeatherSection();
     startWeatherRefresh();

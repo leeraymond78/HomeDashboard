@@ -349,14 +349,9 @@ async function init() {
   }
 
   initMap();
-  const geoPromise = requestUserPosition();
 
   try {
-    const [stops] = await Promise.all([
-      fetchRouteStops(routeStop),
-      geoPromise,
-    ]);
-    routeStops = stops;
+    routeStops = await fetchRouteStops(routeStop);
     const title = await routeTitle(routeStop, routeStops);
     document.getElementById('bus-title').textContent = title;
 
@@ -392,10 +387,10 @@ async function init() {
         await requestUserPosition();
         await refresh({ silent: true });
         const userPos = getUserPosition();
-        updateMap({
-          currentIdx: findCurrentStopIndex(),
-          closestIdx: findClosestStopIndex(userPos),
-        });
+        const currentIdx = findCurrentStopIndex();
+        const closestIdx = findClosestStopIndex(userPos);
+        updateMap({ currentIdx, closestIdx });
+        renderStops({ currentIdx, closestIdx });
       } finally {
         btn.classList.remove('spinning');
       }

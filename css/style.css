@@ -132,6 +132,35 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   flex-direction: column;
 }
 
+.location-prompt {
+  border-bottom: 1px solid var(--border);
+  padding: 0.65rem 1rem;
+  background: rgba(30, 100, 255, 0.12);
+}
+
+.location-prompt-btn {
+  width: 100%;
+  border: 1px solid rgba(30, 100, 255, 0.45);
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  background: rgba(30, 100, 255, 0.2);
+  color: var(--white);
+  font-family: inherit;
+  font-size: 16px;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.location-prompt-btn:active {
+  background: rgba(30, 100, 255, 0.32);
+}
+
+.location-prompt-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .group {
   background: var(--bg);
   border-bottom: 1px solid var(--border);
@@ -835,6 +864,7 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 @media (min-width: 480px) {
   .page-nav,
   .weather-section,
+  .location-prompt,
   .groups,
   .bus-detail-header,
   .bus-map,

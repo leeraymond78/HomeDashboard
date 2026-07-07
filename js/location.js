@@ -1,24 +1,81 @@
 /** @type {GeolocationPosition | null} */
 let userPosition = null;
+/** @type {GeolocationPositionError | null} */
+let lastGeoError = null;
 
-const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 };
+const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 };
 
 export function getUserPosition() {
   return userPosition;
 }
 
+export function getLastGeoError() {
+  return lastGeoError;
+}
+
+export function hasGeolocation() {
+  return !!navigator.geolocation;
+}
+
+/** @returns {'unsupported' | 'insecure' | null} */
+export function geolocationBlockReason() {
+  if (!navigator.geolocation) return 'unsupported';
+  if (!window.isSecureContext) return 'insecure';
+  return null;
+}
+
+export function canUseGeolocation() {
+  return geolocationBlockReason() === null;
+}
+
+/** @returns {Promise<'granted' | 'denied' | 'prompt' | 'unknown'>} */
+export async function getGeolocationPermission() {
+  if (!navigator.permissions?.query) return 'unknown';
+  try {
+    const result = await navigator.permissions.query({ name: 'geolocation' });
+    return /** @type {'granted' | 'denied' | 'prompt'} */ (result.state);
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * Request the device position. On iOS, the first permission prompt only appears
+ * when this is called from a user gesture (tap, pull-to-refresh, etc.).
+ * @returns {Promise<GeolocationPosition | null>}
+ */
 export function requestUserPosition() {
-  if (!navigator.geolocation) return Promise.resolve(null);
+  if (!canUseGeolocation()) return Promise.resolve(null);
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         userPosition = pos;
+        lastGeoError = null;
         resolve(pos);
       },
-      () => resolve(userPosition),
+      (err) => {
+        lastGeoError = err;
+        resolve(userPosition);
+      },
       GEO_OPTIONS,
     );
   });
+}
+
+/**
+ * Load location when permission is already granted; otherwise leave prompting to the UI.
+ * @returns {Promise<'granted' | 'denied' | 'prompt' | 'unsupported' | 'unavailable'>}
+ */
+export async function bootstrapLocation() {
+  const block = geolocationBlockReason();
+  if (block) return block;
+
+  const perm = await getGeolocationPermission();
+  if (perm === 'denied') return 'denied';
+  if (perm !== 'granted') return 'prompt';
+
+  const pos = await requestUserPosition();
+  return pos ? 'granted' : 'unavailable';
 }
 
 export function distanceM(a, b) {

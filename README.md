@@ -10,13 +10,37 @@ Edit `config.json` to define route groups and stops (KMB, NWFB/CTB, MTR Bus, and
 
 ## Run locally
 
-Serve the project root with any static file server, for example:
+For local development, use the included dev server (`serve.py`). It serves static files from the project root on port **8765** and sends no-cache headers for `.js`, `.html`, `.css`, and `.json` so you always see the latest changes.
+
+```bash
+python3 serve.py
+```
+
+Then open http://127.0.0.1:8765/
+
+This is for **local testing only** — not production deployment.
+
+### Test on your phone (geolocation)
+
+The dashboard can use your device location to sort nearby stops. Browsers only allow geolocation in a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) (HTTPS, or `localhost`). On iPhone, opening the app over your home Wi‑Fi at `http://192.168.x.x` is **not** secure, so location will not work.
+
+Run with HTTPS instead:
+
+```bash
+python3 serve.py --https
+```
+
+On first run this creates a self-signed certificate (`dev-cert.pem`, `dev-key.pem`) via OpenSSL. The server prints a LAN URL — open that on your phone (same Wi‑Fi), accept the certificate warning, then allow location when prompted.
+
+### Alternative
+
+Any static file server works for basic local preview, for example:
 
 ```bash
 python3 -m http.server 8080
 ```
 
-Then open `http://localhost:8080`.
+Geolocation on a phone over the network still requires HTTPS; use `serve.py --https` for that.
 
 ## Deploy
 
