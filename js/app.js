@@ -43,7 +43,7 @@ const groupShowAllEtas = new Set();
 
 async function loadConfig() {
   const res = await fetch('config.json');
-  if (!res.ok) throw new Error('設定ファイルを読み込めません');
+  if (!res.ok) throw new Error('無法讀取設定檔');
   config = await res.json();
 }
 
@@ -155,26 +155,26 @@ async function showLocationPrompt(status) {
 
   prompt.hidden = false;
   if (status === 'denied') {
-    btn.textContent = '設定で位置情報を許可してください';
+    btn.textContent = '請在設定中允許位置權限';
     return;
   }
   if (status === 'unavailable') {
     btn.disabled = false;
-    btn.textContent = '位置情報を取得できませんでした。もう一度お試しください';
+    btn.textContent = '無法取得位置，請重試';
     return;
   }
   if (status === 'unsupported') {
-    btn.textContent = 'この端末では位置情報を利用できません';
+    btn.textContent = '此裝置不支援位置功能';
     btn.disabled = true;
     return;
   }
   if (status === 'insecure') {
-    btn.textContent = 'HTTPS接続が必要です（http://192.168… では位置情報を利用できません）';
+    btn.textContent = '需要 HTTPS 連線（http://192.168… 無法使用位置功能）';
     btn.disabled = true;
     return;
   }
   btn.disabled = false;
-  btn.textContent = '近くの停留所を表示（位置情報を許可）';
+  btn.textContent = '顯示附近站點（允許位置權限）';
 }
 
 function applyLocationFromPosition(pos) {
@@ -349,7 +349,7 @@ function syncShowMoreButton(body, index, etas) {
     return;
   }
 
-  const label = `もっと見る（あと${hiddenCount}本）`;
+  const label = `顯示更多（還有 ${hiddenCount} 班）`;
   if (!btn) {
     btn = document.createElement('button');
     btn.type = 'button';
@@ -374,14 +374,14 @@ function syncGroupBody(index) {
 
   if (!displayEtas.length) {
     if (state === 'loading') {
-      showGroupMessage(body, 'loading', '読み込み中…');
+      showGroupMessage(body, 'loading', '載入中…');
       return;
     }
     if (state === 'error') {
-      showGroupMessage(body, 'error-msg', 'データを取得できませんでした');
+      showGroupMessage(body, 'error-msg', '無法取得班次資料');
       return;
     }
-    showGroupMessage(body, 'empty', '到着予定のバスはありません');
+    showGroupMessage(body, 'empty', '目前沒有預定班次');
     return;
   }
 
@@ -563,7 +563,12 @@ async function init() {
     renderGroups();
 
     const locStatus = await bootstrapLocation();
+
+    // Load weather first so it renders before the location prompt is shown.
+    // startWeatherRefresh() is called after this resolves so the interval
+    // starts from a known-good baseline rather than from a cold state.
     await loadWeatherSection();
+
     if (!applyLocationFromPosition(getUserPosition())) {
       await showLocationPrompt(locStatus);
       updateAllGroups();
