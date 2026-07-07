@@ -205,11 +205,13 @@ export async function getMtrStopGeo(stopId) {
 
 export async function fetchKmbEtas(routeStop) {
   const serviceType = routeStop.service_type ?? 1;
+  const bound = routeStop.bound ?? null;
   const url = `https://data.etabus.gov.hk/v1/transport/kmb/eta/${routeStop.stop}/${routeStop.route}/${serviceType}`;
   const res = await fetch(url);
   const json = await res.json();
   return (json.data ?? [])
     .filter((e) => e.eta)
+    .filter((e) => !bound || e.dir === bound)
     .map((e) => ({
       routeId: e.route,
       operator: 'kmb',
