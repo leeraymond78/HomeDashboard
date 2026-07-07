@@ -252,11 +252,13 @@ export async function fetchKmbEtas(routeStop) {
 }
 
 export async function fetchNwfbEtas(routeStop) {
+  const dir = routeStop.dir ?? null;
   const url = `https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/eta/CTB/${routeStop.stop}/${routeStop.route}`;
   const res = await fetch(url);
   const json = await res.json();
   return (json.data ?? [])
     .filter((e) => e.eta)
+    .filter((e) => !dir || e.dir === dir)
     .map((e) => ({
       routeId: e.route,
       operator: 'nwfb',
