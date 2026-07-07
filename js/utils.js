@@ -1,10 +1,12 @@
 /**
- * Shared utility functions used across app.js and weather.js.
+ * @module utils
+ * Shared utility functions used across app.js, weather.js and bus.js.
  */
 
 /**
  * Escape a string for safe HTML insertion.
- * @param {unknown} s
+ * Handles &, <, >, and " characters.
+ * @param {unknown} s - Value to escape; non-strings are coerced via String().
  * @returns {string}
  */
 export function escapeHtml(s) {
@@ -16,8 +18,9 @@ export function escapeHtml(s) {
 }
 
 /**
- * Escape a string for safe use inside an HTML attribute value.
- * @param {unknown} s
+ * Escape a string for safe use inside an HTML attribute value (e.g. data-* or href).
+ * Extends escapeHtml by also escaping single quotes.
+ * @param {unknown} s - Value to escape; non-strings are coerced via String().
  * @returns {string}
  */
 export function escapeAttr(s) {
