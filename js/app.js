@@ -9,6 +9,11 @@ const HOME_REDIRECT_THRESHOLD_M = 1000;
 const GOLD_COAST_COORD = { lat: 22.373628, lng: 113.991213 };
 const flatView = document.documentElement.hasAttribute('data-flat-view');
 const isHomePage = document.documentElement.hasAttribute('data-home-page');
+
+// Only redirect on first launch. If the user navigated back from all.html
+// (indicated by ?back=1), skip redirect entirely for this session.
+const skipRedirect = new URLSearchParams(location.search).has('back');
+
 const maxEtasPerGroup = (() => {
   const raw = document.documentElement.dataset.maxEtas;
   if (!raw) return Infinity;
@@ -148,13 +153,13 @@ function autoExpandNearby() {
 }
 
 /**
- * If this is the home page (data-home-page attribute present) and the user is
- * more than HOME_REDIRECT_THRESHOLD_M metres away from Gold Coast, redirect to
- * all.html so they see the full route list instead.
+ * On first launch of the home page, if the user is more than
+ * HOME_REDIRECT_THRESHOLD_M metres away from Gold Coast, redirect to all.html.
+ * Skipped when the user navigated back from all.html (?back=1).
  * @param {GeolocationPosition} pos
  */
 function maybeRedirectAway(pos) {
-  if (!isHomePage) return;
+  if (!isHomePage || skipRedirect) return;
   const dist = distanceM(
     { lat: pos.coords.latitude, lng: pos.coords.longitude },
     GOLD_COAST_COORD,
@@ -164,10 +169,17 @@ function maybeRedirectAway(pos) {
   }
 }
 
+/** Whether the launch-time redirect check has already been performed. */
+let redirectChecked = false;
+
 function updateLocation({ autoOpenNearby = false } = {}) {
   return requestUserPosition().then((pos) => {
     if (!pos) return;
-    maybeRedirectAway(pos);
+    // Only run the redirect check once per page load (on launch).
+    if (!redirectChecked) {
+      redirectChecked = true;
+      maybeRedirectAway(pos);
+    }
     if (autoOpenNearby) autoExpandNearby();
     updateAllGroups();
     if (autoOpenNearby) refreshOpenGroups();
