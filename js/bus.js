@@ -771,13 +771,20 @@ function updateMap({ currentIdx, closestIdx }) {
   }
 }
 
+function formatEtaMinsLabel(eta) {
+  const diffMins = (eta.etaTime - Date.now()) / 60000;
+  if (diffMins > 0) return `${Math.round(diffMins)}分`;
+  if (diffMins <= -1) return '遅刻';
+  return '到着';
+}
+
 function renderEtaList(etas) {
   if (!etas.length) {
     return '<div class="bus-stop-empty">情報なし</div>';
   }
   return etas.map((eta) => `
     <div class="bus-eta-item ${eta.etaClass}">
-      <span class="bus-eta-mins">${eta.mins > 0 ? `${eta.mins}分` : '到着'}</span>
+      <span class="bus-eta-mins">${formatEtaMinsLabel(eta)}</span>
       ${eta.remark ? `<span class="bus-eta-remark">${escapeHtml(eta.remark)}</span>` : ''}
       <span class="bus-eta-time">${escapeHtml(eta.time)}</span>
     </div>`).join('');
@@ -941,7 +948,7 @@ function updateLiveMinutes() {
   const now = Date.now();
   for (const etas of stopEtas.values()) {
     for (const row of etas) {
-      row.mins = Math.max(0, Math.round((row.etaTime - now) / 60000));
+      row.mins = Math.round((row.etaTime - now) / 60000);
       row.time = formatTime(row.etaTime);
     }
   }
