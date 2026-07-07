@@ -188,6 +188,10 @@ function applyLocationFromPosition(pos) {
 }
 
 function setupLocationPrompt() {
+  window.addEventListener('userposition', () => {
+    applyLocationFromPosition(getUserPosition());
+  });
+
   document.getElementById('location-prompt-btn')?.addEventListener('click', () => {
     const block = geolocationBlockReason();
     if (block) {
@@ -559,17 +563,14 @@ async function init() {
     renderGroups();
 
     const locStatus = await bootstrapLocation();
-    if (getUserPosition()) {
-      applyLocationSort();
-      renderGroups();
+    await loadWeatherSection();
+    if (!applyLocationFromPosition(getUserPosition())) {
+      await showLocationPrompt(locStatus);
+      updateAllGroups();
+      refreshOpenGroups();
     }
-    await showLocationPrompt(locStatus);
     setupLocationPrompt();
-
-    updateAllGroups();
-    loadWeatherSection();
     startWeatherRefresh();
-    refreshOpenGroups();
     startRefreshTimer();
     setInterval(updateRefreshTimer, 1000);
     setInterval(updateLiveMinutes, 30_000);

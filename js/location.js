@@ -51,6 +51,7 @@ export function requestUserPosition() {
       (pos) => {
         userPosition = pos;
         lastGeoError = null;
+        window.dispatchEvent(new CustomEvent('userposition', { detail: pos }));
         resolve(pos);
       },
       (err) => {
@@ -72,10 +73,13 @@ export async function bootstrapLocation() {
 
   const perm = await getGeolocationPermission();
   if (perm === 'denied') return 'denied';
-  if (perm !== 'granted') return 'prompt';
 
+  // iOS often reports "prompt" or "unknown" even when permission is already granted,
+  // so always try getCurrentPosition unless the user has explicitly denied access.
   const pos = await requestUserPosition();
-  return pos ? 'granted' : 'unavailable';
+  if (pos) return 'granted';
+  if (perm === 'prompt' || perm === 'unknown') return 'prompt';
+  return 'unavailable';
 }
 
 export function distanceM(a, b) {
