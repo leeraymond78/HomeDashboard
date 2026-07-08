@@ -236,7 +236,7 @@ function createEtaRowElement(row) {
   tr.className = 'eta-row eta-row-clickable';
   tr.innerHTML = `
     <td class="route-id ${row.routeClass}"></td>
-    <td class="express-cell ${row.express.cls}"></td>
+    <td class="express-cell"><span class="express-badge"></span></td>
     <td class="eta-time ${row.etaClass}"></td>
     <td class="dest-cell"></td>
     <td class="eta-mins ${row.etaClass}"></td>
@@ -276,14 +276,26 @@ function setScrollText(td, text, className) {
   }
 }
 
+function expressBadge(expressTd) {
+  let badge = expressTd.querySelector('.express-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'express-badge';
+    expressTd.replaceChildren(badge);
+  }
+  return badge;
+}
+
 function patchEtaRow(tr, row) {
   const [routeTd, expressTd, timeTd, destTd, minsTd, remarkTd] = tr.children;
 
   setCellClass(routeTd, `route-id ${row.routeClass}`);
   setCellText(routeTd, row.routeId);
 
-  setCellClass(expressTd, `express-cell ${row.express.cls}`);
-  setCellText(expressTd, row.express.text);
+  setCellClass(expressTd, 'express-cell');
+  const badge = expressBadge(expressTd);
+  setCellClass(badge, `express-badge ${row.express.cls}`);
+  setCellText(badge, row.express.text);
 
   setCellClass(timeTd, `eta-time ${row.etaClass}`);
   setCellText(timeTd, row.time);
