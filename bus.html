@@ -24,7 +24,7 @@
         戻る
       </a>
       <div class="bus-detail-actions">
-        <button id="timetable-btn" class="page-nav-link bus-detail-action-btn" type="button" hidden>
+        <button id="timetable-btn" class="page-nav-link bus-detail-action-btn" type="button" hidden aria-haspopup="dialog" aria-expanded="false" aria-controls="bus-timetable-dialog">
           時刻表
         </button>
         <button id="flip-bound-btn" class="page-nav-link bus-detail-action-btn" type="button" hidden>
@@ -45,14 +45,6 @@
     </button>
   </div>
 
-  <section id="bus-timetable-panel" class="bus-timetable-panel" hidden>
-    <div class="bus-timetable-panel-head">
-      <h2 class="bus-timetable-title">時刻表</h2>
-      <span id="bus-timetable-subtitle" class="bus-timetable-subtitle"></span>
-    </div>
-    <div id="bus-timetable-body"></div>
-  </section>
-
   <main id="bus-stops" class="bus-stops" aria-live="polite">
     <div class="loading">読み込み中…</div>
   </main>
@@ -65,6 +57,24 @@
       </svg>
     </button>
   </footer>
+
+  <dialog id="bus-timetable-dialog" class="bus-timetable-dialog" aria-labelledby="bus-timetable-title">
+    <div class="bus-timetable-sheet">
+      <div class="bus-timetable-panel-head">
+        <div class="bus-timetable-panel-titles">
+          <h2 id="bus-timetable-title" class="bus-timetable-title">時刻表</h2>
+          <span id="bus-timetable-subtitle" class="bus-timetable-subtitle"></span>
+        </div>
+        <button type="button" class="bus-timetable-close" data-timetable-close aria-label="閉じる">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div id="bus-timetable-body" class="bus-timetable-body"></div>
+    </div>
+  </dialog>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="js/register-sw.js"></script>

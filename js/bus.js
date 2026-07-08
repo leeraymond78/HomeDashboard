@@ -122,14 +122,44 @@ function routeHeadwayKey() {
 
 function initTimetableButton() {
   const btn = document.getElementById('timetable-btn');
-  if (!btn) return;
+  const dialog = document.getElementById('bus-timetable-dialog');
+  if (!btn || !dialog) return;
   if (btn.dataset.bound) return;
   btn.dataset.bound = '1';
   btn.hidden = true;
+
+  const closeDialog = () => {
+    if (dialog.open) dialog.close();
+  };
+
   btn.addEventListener('click', async () => {
     await ensureHeadwayFeatures();
-    timetableVisible = !timetableVisible;
+    if (dialog.open) {
+      closeDialog();
+      return;
+    }
     renderTimetablePanel();
+    dialog.showModal();
+    focusCurrentTimetableRow();
+    timetableVisible = true;
+    btn.setAttribute('aria-expanded', 'true');
+  });
+
+  dialog.addEventListener('close', () => {
+    timetableVisible = false;
+    btn.setAttribute('aria-expanded', 'false');
+  });
+
+  dialog.addEventListener('toggle', () => {
+    if (dialog.open) focusCurrentTimetableRow();
+  });
+
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) closeDialog();
+  });
+
+  dialog.querySelectorAll('[data-timetable-close]').forEach((el) => {
+    el.addEventListener('click', closeDialog);
   });
 }
 
@@ -497,16 +527,210 @@ function variantMatchScore(variant) {
   return score;
 }
 
-function isServiceActive(service, exceptions, date) {
+function isServiceInCalendarRange(service, date) {
   if (!service) return false;
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   const dateKey = `${y}${m}${d}`;
-  const override = (exceptions ?? []).find((item) => item.date === dateKey);
-  if (override) return override.exceptionType === 1;
-  if (dateKey < service.startDate || dateKey > service.endDate) return false;
-  return service[['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()]];
+  return dateKey >= service.startDate && dateKey <= service.endDate;
+}
+
+function hasWeekdayService(service) {
+  return service.monday || service.tuesday || service.wednesday || service.thursday || service.friday;
+}
+
+const TIMETABLE_SECTION_DEFS = [
+  { id: 'weekday', label: '平日' },
+  { id: 'saturday', label: '土曜' },
+  { id: 'sundayHoliday', label: '日曜・祝日' },
+];
+
+function serviceBelongsToSection(service, sectionId) {
+  if (!service) return false;
+  const weekday = hasWeekdayService(service);
+  const sat = service.saturday;
+  const sun = service.sunday;
+  switch (sectionId) {
+    case 'weekday':
+      return weekday;
+    case 'saturday':
+      return sat && !sun;
+    case 'sundayHoliday':
+      return sun && !weekday;
+    default:
+      return false;
+  }
+}
+
+function dedupeFrequencyRows(rows) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = `${row.startTime}|${row.endTime}|${row.headwaySecs}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => a.startTime.localeCompare(b.startTime));
+}
+
+function isServiceActiveOnDate(service, date = new Date()) {
+  if (!service) return false;
+  const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  return Boolean(service[dayKeys[date.getDay()]]);
+}
+
+function serviceGroupLabel(service) {
+  if (!service) return '';
+  if (service.monday && service.tuesday && service.wednesday && service.thursday && service.friday
+    && !service.saturday && !service.sunday) {
+    return '';
+  }
+  if (service.monday && service.tuesday && service.wednesday && service.thursday
+    && !service.friday && !service.saturday && !service.sunday) {
+    return '月〜木曜';
+  }
+  if (service.friday && !service.monday && !service.tuesday && !service.wednesday && !service.thursday
+    && !service.saturday && !service.sunday) {
+    return '金曜';
+  }
+  if (service.saturday && !service.sunday && !hasWeekdayService(service)) return '';
+  if (service.sunday && !service.saturday && !hasWeekdayService(service)) return '';
+  const specs = [
+    ['monday', '月'], ['tuesday', '火'], ['wednesday', '水'], ['thursday', '木'],
+    ['friday', '金'], ['saturday', '土'], ['sunday', '日'],
+  ];
+  return specs.filter(([key]) => service[key]).map(([, label]) => label).join('・');
+}
+
+function timetableGroupsForSection(variant, sectionId) {
+  const groups = [];
+  const today = new Date();
+  for (const serviceId of variant.serviceIds ?? []) {
+    const service = variant.calendar?.[serviceId];
+    if (!serviceBelongsToSection(service, sectionId)) continue;
+    if (!isServiceInCalendarRange(service, today)) continue;
+    const rows = dedupeFrequencyRows(variant.timetableByServiceId?.[serviceId] ?? []);
+    if (!rows.length) continue;
+    groups.push({ serviceId, service, label: serviceGroupLabel(service), rows });
+  }
+  return groups;
+}
+
+function timetableSections(variant) {
+  if (!variant) return [];
+  if (variant.timetableKind === 'departure') {
+    const rows = variant.rows ?? [];
+    if (!rows.length) return [];
+    return [{ id: 'today', label: timetableDayLabel(), groups: [{ label: '', rows }] }];
+  }
+  return TIMETABLE_SECTION_DEFS
+    .map(({ id, label }) => {
+      const groups = timetableGroupsForSection(variant, id);
+      if (!groups.length) return null;
+      return { id, label, groups };
+    })
+    .filter(Boolean);
+}
+
+function gtfsTimeToMinutes(value) {
+  const parts = String(value).split(':');
+  const hh = parseInt(parts[0], 10) || 0;
+  const mm = parseInt(parts[1], 10) || 0;
+  const ss = parseInt(parts[2], 10) || 0;
+  return hh * 60 + mm + ss / 60;
+}
+
+function nowAsGtfsMinutes(date = new Date()) {
+  let mins = date.getHours() * 60 + date.getMinutes() + date.getSeconds() / 60;
+  if (date.getHours() < 4) mins += 24 * 60;
+  return mins;
+}
+
+function currentTimetableSectionId(date = new Date()) {
+  const day = date.getDay();
+  if (day === 6) return 'saturday';
+  if (day === 0) return 'sundayHoliday';
+  return 'weekday';
+}
+
+function isCurrentHeadwayRow(row, nowGtfs = nowAsGtfsMinutes()) {
+  const start = gtfsTimeToMinutes(row.startTime);
+  const end = gtfsTimeToMinutes(row.endTime);
+  if (end > start) return nowGtfs >= start && nowGtfs < end;
+  return nowGtfs >= start || nowGtfs < end;
+}
+
+function isCurrentDepartureRow(row, rows, nowGtfs = nowAsGtfsMinutes()) {
+  const times = rows.map((r) => gtfsTimeToMinutes(r.time)).sort((a, b) => a - b);
+  const current = gtfsTimeToMinutes(row.time);
+  const idx = times.indexOf(current);
+  const next = times[idx + 1];
+  if (next == null) return nowGtfs >= current;
+  return nowGtfs >= current && nowGtfs < next;
+}
+
+function isCurrentTimetableRow(row, { sectionId, activeSection, rows, service, today = new Date() }) {
+  if (sectionId !== activeSection && sectionId !== 'today') return false;
+  if (service && !isServiceActiveOnDate(service, today)) return false;
+  if (row.kind === 'departure') return isCurrentDepartureRow(row, rows);
+  return isCurrentHeadwayRow(row);
+}
+
+function renderTimetableRow(row, context) {
+  const isCurrent = isCurrentTimetableRow(row, context);
+  const cls = isCurrent ? ' bus-timetable-row--current' : '';
+  if (row.kind === 'departure') {
+    return `<div class="bus-timetable-row${cls}"><span class="bus-timetable-range">${formatScheduleTime(row.time)}</span></div>`;
+  }
+  const minutes = Math.round(row.headwaySecs / 60);
+  return `<div class="bus-timetable-row${cls}">
+    <span class="bus-timetable-range">${formatScheduleTime(row.startTime)} - ${formatScheduleTime(row.endTime)}</span>
+    <span class="bus-timetable-headway">${minutes}分鐘</span>
+  </div>`;
+}
+
+function renderTimetableSectionsHtml(sections) {
+  const activeSection = currentTimetableSectionId();
+  const today = new Date();
+  return sections.map((section) => {
+    const showSubgroupLabels = section.groups.length > 1 || section.groups.some((group) => group.label);
+    return `
+    <section class="bus-timetable-section">
+      ${section.label ? `<h3 class="bus-timetable-section-title">${escapeHtml(section.label)}</h3>` : ''}
+      ${section.groups.map((group) => `
+        ${showSubgroupLabels && group.label ? `<h4 class="bus-timetable-subsection-title">${escapeHtml(group.label)}</h4>` : ''}
+        <div class="bus-timetable-list">${group.rows.map((row) => renderTimetableRow(row, {
+      sectionId: section.id,
+      activeSection,
+      rows: group.rows,
+      service: group.service,
+      today,
+    })).join('')}</div>
+      `).join('')}
+    </section>`;
+  }).join('');
+}
+
+function scrollCurrentTimetableRowIntoView(body) {
+  const row = body?.querySelector('.bus-timetable-row--current');
+  if (!row || !body) return;
+
+  const scroll = () => {
+    const bodyRect = body.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const nextTop = body.scrollTop + (rowRect.top - bodyRect.top) - (body.clientHeight - row.offsetHeight) / 2;
+    body.scrollTop = Math.max(0, nextTop);
+  };
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(scroll);
+  });
+}
+
+function focusCurrentTimetableRow() {
+  const body = document.getElementById('bus-timetable-body');
+  if (!body) return;
+  scrollCurrentTimetableRowIntoView(body);
 }
 
 function formatScheduleTime(value) {
@@ -516,19 +740,11 @@ function formatScheduleTime(value) {
   return `${hours}${mm}`;
 }
 
-function timetableRowsForToday() {
-  if (!matchedHeadwayVariant) return [];
-  if (matchedHeadwayVariant.timetableKind === 'departure') return matchedHeadwayVariant.rows ?? [];
-  const today = new Date();
-  const rows = [];
-  for (const serviceId of matchedHeadwayVariant.serviceIds ?? []) {
-    const service = matchedHeadwayVariant.calendar?.[serviceId];
-    const exceptions = matchedHeadwayVariant.calendarExceptions?.[serviceId] ?? [];
-    if (!isServiceActive(service, exceptions, today)) continue;
-    rows.push(...(matchedHeadwayVariant.timetableByServiceId?.[serviceId] ?? []));
-  }
-  rows.sort((a, b) => a.startTime.localeCompare(b.startTime));
-  return rows;
+function timetableDayLabel() {
+  const day = new Date().getDay();
+  if (day === 6) return '土曜';
+  if (day === 0) return '日祝';
+  return '平日';
 }
 
 function variantHasTimetableData(variant) {
@@ -539,41 +755,35 @@ function variantHasTimetableData(variant) {
   return Object.values(variant.timetableByServiceId).some((rows) => Array.isArray(rows) && rows.length > 0);
 }
 
-function timetableDayLabel() {
-  const day = new Date().getDay();
-  if (day === 6) return '土曜';
-  if (day === 0) return '日祝';
-  return '平日';
-}
-
 function renderTimetablePanel() {
-  const panel = document.getElementById('bus-timetable-panel');
+  const dialog = document.getElementById('bus-timetable-dialog');
   const subtitle = document.getElementById('bus-timetable-subtitle');
   const body = document.getElementById('bus-timetable-body');
   const button = document.getElementById('timetable-btn');
-  if (!panel || !subtitle || !body || !button) return;
+  if (!dialog || !subtitle || !body || !button) return;
 
   const hasRouteTimetable = variantHasTimetableData(matchedHeadwayVariant);
-  const rows = hasRouteTimetable ? timetableRowsForToday() : [];
-  if (!hasRouteTimetable) timetableVisible = false;
+  const sections = hasRouteTimetable ? timetableSections(matchedHeadwayVariant) : [];
+  if (!hasRouteTimetable) {
+    timetableVisible = false;
+    if (dialog.open) dialog.close();
+  }
   button.hidden = !hasRouteTimetable;
-  button.textContent = timetableVisible ? '時刻表を閉じる' : '時刻表';
-  button.setAttribute('aria-pressed', String(timetableVisible));
-  panel.hidden = !hasRouteTimetable || !timetableVisible;
+  button.textContent = '時刻表';
+  button.setAttribute('aria-expanded', String(dialog.open));
+  timetableVisible = dialog.open;
   if (!hasRouteTimetable) return;
 
-  subtitle.textContent = `${timetableDayLabel()}ダイヤ`;
-  if (!rows.length) {
-    body.innerHTML = '<div class="bus-stop-empty">本日の時刻表データがありません</div>';
+  const routeName = matchedHeadwayVariant?.routeLongName ?? '';
+  subtitle.textContent = routeName;
+  subtitle.hidden = !routeName;
+
+  if (!sections.length) {
+    body.innerHTML = '<div class="bus-stop-empty">時刻表データがありません</div>';
     return;
   }
-  body.innerHTML = `<div class="bus-timetable-list">${rows.map((row) => `
-    <div class="bus-timetable-row">
-      ${row.kind === 'departure'
-    ? `<span class="bus-timetable-range">${formatScheduleTime(row.time)}</span>`
-    : `<span class="bus-timetable-range">${formatScheduleTime(row.startTime)} - ${formatScheduleTime(row.endTime)}</span>
-      <span class="bus-timetable-headway">${Math.round(row.headwaySecs / 60)}分間隔</span>`}
-    </div>`).join('')}</div>`;
+  body.innerHTML = renderTimetableSectionsHtml(sections);
+  if (dialog.open) focusCurrentTimetableRow();
 }
 
 async function initHeadwayFeatures() {
