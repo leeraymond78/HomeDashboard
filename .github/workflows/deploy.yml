@@ -24,6 +24,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Write build info
+        run: printf '{"build":%s}\n' "${{ github.run_number }}" > build-info.json
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

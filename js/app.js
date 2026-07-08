@@ -574,7 +574,22 @@ async function refreshAll({ spinButton = false } = {}) {
   }
 }
 
+async function loadBuildStamp() {
+  const el = document.getElementById('build-stamp');
+  if (!el) return;
+  try {
+    const res = await fetch('build-info.json', { cache: 'no-store' });
+    if (!res.ok) return;
+    const info = await res.json();
+    const build = Number(info.build);
+    if (Number.isFinite(build) && build > 0) el.textContent = `build ${build}`;
+  } catch {
+    /* ignore */
+  }
+}
+
 async function init() {
+  loadBuildStamp();
   try {
     await loadConfig();
     await loadStopGeo();

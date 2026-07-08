@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local dev server. Use --https for phone geolocation (iOS requires secure context)."""
 import http.server
+import json
 import os
 import socketserver
 import ssl
@@ -35,6 +36,19 @@ def ensure_cert():
     ], check=True)
 
 
+def write_build_info():
+    try:
+        build = subprocess.run(
+            ['git', 'rev-list', '--count', 'HEAD'],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        with open('build-info.json', 'w', encoding='utf-8') as f:
+            json.dump({'build': int(build)}, f, ensure_ascii=False)
+            f.write('\n')
+    except (subprocess.CalledProcessError, OSError, ValueError):
+        pass
+
+
 def local_ip():
     import socket
     try:
@@ -46,6 +60,7 @@ def local_ip():
 
 
 if __name__ == '__main__':
+    write_build_info()
     use_https = '--https' in sys.argv
     with ReusableTCPServer(('', PORT), Handler) as httpd:
         if use_https:
