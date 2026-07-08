@@ -996,7 +996,12 @@ function syncExpandedMarkerTooltip() {
 function formatBusArrivalLabel(eta) {
   if (eta.busAwaitingDepart || eta.remark === '発車待ち') return '発車待ち';
   if (!eta.busStopName) return '走行中';
-  return `${eta.busStopName}へ到着`;
+  let label = `${eta.busStopName}へ到着`;
+  const stopsLeft = eta.busStopsLeft;
+  if (stopsLeft != null && stopsLeft > 0) {
+    label += `（あと${stopsLeft}駅）`;
+  }
+  return label;
 }
 
 function busLocationIcon(etaClass, index) {

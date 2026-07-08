@@ -1,6 +1,6 @@
 /** @typedef {{ type: string, [key: string]: unknown }} RouteStopConfig */
 /** @typedef {{ seq: number, stopId: string, name: string, lat: number | null, lng: number | null }} RouteStopInfo */
-/** @typedef {{ routeId: string, operator: string, express: { text: string, cls: string }, routeClass: string, time: string, dest: string, mins: number, remark: string, etaClass: string, etaTime: Date, etaSeq?: number, busLat?: number | null, busLng?: number | null, busStopSeq?: number | null, busStopName?: string | null, routeStop?: RouteStopConfig }} EtaRow */
+/** @typedef {{ routeId: string, operator: string, express: { text: string, cls: string }, routeClass: string, time: string, dest: string, mins: number, remark: string, etaClass: string, etaTime: Date, etaSeq?: number, busLat?: number | null, busLng?: number | null, busStopSeq?: number | null, busStopName?: string | null, busStopsLeft?: number | null, busAwaitingDepart?: boolean, routeStop?: RouteStopConfig }} EtaRow */
 /** @typedef {{ seq: number, eta_seq: number, eta: string, dir?: string }} RouteWideEtaRow */
 
 import { distanceM } from './location.js';
@@ -277,16 +277,29 @@ function routeOriginStop(routeStops) {
  */
 function labelBusLocation(routeStops, location, etaMins, targetStop) {
   if (etaMins <= 1) {
-    return { ...location, name: targetStop.name, awaitingDepart: false };
+    return {
+      ...location,
+      name: targetStop.name,
+      awaitingDepart: false,
+      stopSeq: targetStop.seq,
+      stopsLeft: 0,
+    };
   }
   const origin = routeOriginStop(routeStops);
   const upstream = routeStops.filter((stop) =>
     stop.seq <= targetStop.seq && Number.isFinite(stop.lat) && Number.isFinite(stop.lng));
   const nearest = findNearestRouteStop(upstream, location.lat, location.lng);
   if (origin && nearest?.stopId === origin.stopId) {
-    return { ...location, name: null, awaitingDepart: true };
+    return { ...location, name: null, awaitingDepart: true, stopSeq: nearest?.seq ?? null, stopsLeft: null };
   }
-  return { ...location, name: nearest?.name ?? null, awaitingDepart: false };
+  const stopsLeft = nearest ? Math.max(0, targetStop.seq - nearest.seq) : null;
+  return {
+    ...location,
+    name: nearest?.name ?? null,
+    awaitingDepart: false,
+    stopSeq: nearest?.seq ?? null,
+    stopsLeft,
+  };
 }
 
 /** @param {unknown[]} rows */
@@ -421,7 +434,7 @@ function interpolateCoords(a, b, t) {
 }
 
 /** @typedef {{ seq: number, etaTime: number, stop: RouteStopInfo }} EtaTimelinePoint */
-/** @typedef {{ lat: number, lng: number, name: string | null, awaitingDepart?: boolean }} BusLocationEstimate */
+/** @typedef {{ lat: number, lng: number, name: string | null, awaitingDepart?: boolean, stopSeq?: number | null, stopsLeft?: number | null }} BusLocationEstimate */
 
 /**
  * @param {RouteWideEtaRow[]} routeWideEtas
@@ -632,8 +645,9 @@ export async function enrichEtasWithBusLocation(etas, routeStop, targetStop, rou
         ...eta,
         busLat: location?.lat ?? null,
         busLng: location?.lng ?? null,
-        busStopSeq: null,
+        busStopSeq: location?.stopSeq ?? null,
         busStopName: location?.name ?? null,
+        busStopsLeft: location?.stopsLeft ?? null,
         busAwaitingDepart: location?.awaitingDepart ?? false,
       };
     });
@@ -659,8 +673,9 @@ export async function enrichEtasWithBusLocation(etas, routeStop, targetStop, rou
       ...eta,
       busLat: location?.lat ?? null,
       busLng: location?.lng ?? null,
-      busStopSeq: null,
+      busStopSeq: location?.stopSeq ?? null,
       busStopName: notDeparted ? null : location?.name ?? null,
+      busStopsLeft: notDeparted ? null : location?.stopsLeft ?? null,
       busAwaitingDepart: notDeparted || (location?.awaitingDepart ?? false),
     };
   });
