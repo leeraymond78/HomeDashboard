@@ -12,6 +12,7 @@ import {
   operatorClass,
   parseRouteStop,
   routeTitle,
+  routeTitleHint,
   serializeRouteStop,
 } from './transit-api.js';
 
@@ -1129,6 +1130,9 @@ async function init() {
     return;
   }
 
+  const titleHint = routeTitleHint(routeStop);
+  if (titleHint) document.getElementById('bus-title').textContent = titleHint;
+
   await initFlipBoundButton();
 
   initMap();
@@ -1187,7 +1191,7 @@ async function init() {
       }
     });
   } catch (err) {
-    document.getElementById('bus-title').textContent = '読み込みエラー';
+    if (!titleHint) document.getElementById('bus-title').textContent = '読み込みエラー';
     document.getElementById('bus-stops').innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
   }
 }

@@ -1046,6 +1046,27 @@ export function parseRouteStop(params) {
   }
 }
 
+/** Immediate title from URL params — no network. */
+export function routeTitleHint(routeStop) {
+  if (!routeStop?.type) return '';
+  switch (routeStop.type) {
+    case 'kmb':
+    case 'nwfb':
+      return routeStop.route ? String(routeStop.route) : '';
+    case 'mtr':
+      return routeStop.stopId ? mtrRouteFromStopId(routeStop.stopId) : '';
+    case 'gmb':
+      return routeStop.routeId ?? routeStop.realRouteId ?? '';
+    case 'socif': {
+      const id = routeStop.routeId ?? (routeStop.route != null ? String(routeStop.route) : '');
+      if (id && routeStop.dest) return `${id} - ${routeStop.dest}`;
+      return id || routeStop.dest || '';
+    }
+    default:
+      return '';
+  }
+}
+
 export async function routeTitle(routeStop, stops) {
   const lastName = stops.at(-1)?.name ?? '';
   switch (routeStop.type) {
