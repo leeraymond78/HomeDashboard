@@ -35,7 +35,15 @@
     <h1 id="bus-title" class="bus-detail-title">読み込み中…</h1>
   </header>
 
-  <div id="bus-map" class="bus-map" aria-hidden="true"></div>
+  <div class="bus-map-wrap">
+    <div id="bus-map" class="bus-map" aria-hidden="true"></div>
+    <button id="bus-locate-btn" class="bus-map-locate-btn" type="button" aria-label="現在地" title="現在地" hidden>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+      </svg>
+    </button>
+  </div>
 
   <section id="bus-timetable-panel" class="bus-timetable-panel" hidden>
     <div class="bus-timetable-panel-head">

@@ -1,4 +1,4 @@
-import { distanceM, getUserPosition, requestUserPosition } from './location.js';
+import { distanceM, geolocationBlockReason, getUserPosition, requestUserPosition } from './location.js';
 import { escapeAttr, escapeHtml } from './utils.js';
 import {
   clearMtrCache,
@@ -47,6 +47,8 @@ const expandedStops = new Set();
 const stopEtas = new Map();
 /** @type {L.Map | null} */
 let map = null;
+/** @type {L.Marker | null} */
+let userMarker = null;
 /** @type {L.Polyline | null} */
 let routeLine = null;
 /** @type {Map<string, L.Marker>} */
@@ -709,8 +711,69 @@ function initMap() {
   }).addTo(map);
 }
 
+function userLocationIcon() {
+  return L.divIcon({
+    className: 'bus-user-marker-wrap',
+    html: '<span class="bus-user-marker"></span>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+function setUserMapMarker(pos) {
+  if (!map || !pos) return;
+  const { latitude, longitude } = pos.coords;
+  if (!isValidCoord(latitude, longitude)) return;
+  const latlng = [latitude, longitude];
+  if (userMarker) {
+    userMarker.setLatLng(latlng);
+  } else {
+    userMarker = L.marker(latlng, { icon: userLocationIcon(), zIndexOffset: 1000 }).addTo(map);
+  }
+}
+
+function panToUserLocation(pos) {
+  if (!map || !pos) return false;
+  const { latitude, longitude } = pos.coords;
+  if (!isValidCoord(latitude, longitude)) return false;
+  map.setView([latitude, longitude], STOP_MAP_ZOOM, { animate: true });
+  setUserMapMarker(pos);
+  return true;
+}
+
+function syncLocateButton(visible) {
+  const btn = document.getElementById('bus-locate-btn');
+  if (!btn) return;
+  btn.hidden = !visible || !!geolocationBlockReason();
+}
+
+function bindLocateButton() {
+  const btn = document.getElementById('bus-locate-btn');
+  if (!btn || btn.dataset.bound) return;
+  btn.dataset.bound = '1';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const pos = await requestUserPosition();
+      panToUserLocation(pos ?? getUserPosition());
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 function isValidCoord(lat, lng) {
   return Number.isFinite(lat) && Number.isFinite(lng);
+}
+
+function closeAllMarkerTooltips() {
+  markers.forEach((marker) => marker.closeTooltip());
+}
+
+function syncExpandedMarkerTooltip() {
+  closeAllMarkerTooltips();
+  const key = [...expandedStops][0];
+  if (key) markers.get(key)?.openTooltip();
 }
 
 function updateMap({ currentIdx, closestIdx }) {
@@ -727,10 +790,12 @@ function updateMap({ currentIdx, closestIdx }) {
 
   if (!coords.length) {
     map.getContainer().style.display = 'none';
+    syncLocateButton(false);
     return;
   }
 
   map.getContainer().style.display = '';
+  syncLocateButton(true);
 
   const op = operatorForRouteStop();
   const colorClass = operatorClass(op);
@@ -746,7 +811,12 @@ function updateMap({ currentIdx, closestIdx }) {
       iconAnchor: [16, 16],
     });
     const marker = L.marker([stop.lat, stop.lng], { icon })
-      .bindTooltip(escapeHtml(stop.name), { direction: 'top', opacity: 0.9 })
+      .bindTooltip(escapeHtml(stop.name), {
+        direction: 'top',
+        opacity: 0.9,
+        offset: [0, -26],
+        className: 'bus-stop-tooltip',
+      })
       .addTo(map);
     marker.on('click', () => {
       const el = document.querySelector(`[data-stop-key="${stopKey(stop)}"]`);
@@ -769,6 +839,8 @@ function updateMap({ currentIdx, closestIdx }) {
   if (focus?.lat != null && focus?.lng != null && isValidCoord(focus.lat, focus.lng)) {
     map.setView([focus.lat, focus.lng], STOP_MAP_ZOOM);
   }
+
+  syncExpandedMarkerTooltip();
 }
 
 function formatEtaMinsLabel(eta) {
@@ -885,6 +957,7 @@ async function toggleStop(stop, forceOpen = false) {
   const key = stopKey(stop);
   const open = forceOpen || !expandedStops.has(key);
   if (open) {
+    expandedStops.clear();
     expandedStops.add(key);
     if (!stopEtas.has(key)) {
       const etas = await fetchStopEtas(stop);
@@ -893,10 +966,11 @@ async function toggleStop(stop, forceOpen = false) {
     const marker = markers.get(key);
     if (marker && stop.lat != null && stop.lng != null) {
       map?.setView([stop.lat, stop.lng], STOP_MAP_ZOOM, { animate: true });
-      marker.openTooltip();
+      syncExpandedMarkerTooltip();
     }
   } else {
     expandedStops.delete(key);
+    markers.get(key)?.closeTooltip();
   }
   const userPos = getUserPosition();
   renderStops({
@@ -976,6 +1050,10 @@ async function init() {
   await initFlipBoundButton();
 
   initMap();
+  bindLocateButton();
+  window.addEventListener('userposition', (event) => {
+    setUserMapMarker(/** @type {CustomEvent<GeolocationPosition>} */ (event).detail);
+  });
 
   try {
     routeStops = await fetchRouteStops(routeStop);
