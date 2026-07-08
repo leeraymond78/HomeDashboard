@@ -15,7 +15,7 @@ KEY = 'dev-key.pem'
 class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         path = self.path.split('?', 1)[0]
-        if path.endswith(('.js', '.html', '.css', '.json')):
+        if path.endswith(('.js', '.html', '.css', '.json')) and path != '/sw.js':
             self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
             self.send_header('Pragma', 'no-cache')
         super().end_headers()
