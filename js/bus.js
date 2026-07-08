@@ -2,6 +2,8 @@ import { distanceM, geolocationBlockReason, getUserPosition, requestUserPosition
 import { escapeAttr, escapeHtml } from './utils.js';
 import {
   clearMtrCache,
+  clearRouteWideEtaCache,
+  enrichEtasWithBusLocation,
   fetchEtas,
   fetchRouteStops,
   fetchSocifRoute,
@@ -53,6 +55,10 @@ let userMarker = null;
 let routeLine = null;
 /** @type {Map<string, L.Marker>} */
 const markers = new Map();
+/** @type {L.LayerGroup | null} */
+let busMarkersLayer = null;
+/** @type {L.LayerGroup | null} */
+let busApproachLayer = null;
 const tdHeadwayTextPromises = new Map();
 const tdHeadwayRoutePromises = new Map();
 let matchedHeadwayVariant = null;
@@ -776,6 +782,78 @@ function syncExpandedMarkerTooltip() {
   if (key) markers.get(key)?.openTooltip();
 }
 
+function formatBusArrivalLabel(eta) {
+  if (eta.busAwaitingDepart || eta.remark === '発車待ち') return '発車待ち';
+  if (!eta.busStopName) return '走行中';
+  return `${eta.busStopName}へ到着`;
+}
+
+function busLocationIcon(etaClass, index) {
+  return L.divIcon({
+    className: 'bus-vehicle-marker-wrap',
+    html: `<span class="bus-vehicle-marker ${etaClass}" aria-label="バス${index + 1}">
+      <svg class="bus-vehicle-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-2.21-1.79-4-4-4H8C5.79 2 4 3.79 4 6v10zm2-10h12v9H6V6z"/>
+        <circle cx="7.5" cy="16.5" r="1.4"/>
+        <circle cx="16.5" cy="16.5" r="1.4"/>
+      </svg>
+      <span class="bus-vehicle-num">${index + 1}</span>
+    </span>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+  });
+}
+
+function clearBusLocationMarkers() {
+  busMarkersLayer?.remove();
+  busApproachLayer?.remove();
+  busMarkersLayer = null;
+  busApproachLayer = null;
+}
+
+function updateBusLocationMarkers() {
+  if (!map) return;
+  clearBusLocationMarkers();
+
+  const expandedKey = [...expandedStops][0];
+  if (!expandedKey) return;
+
+  const targetStop = routeStops.find((stop) => stopKey(stop) === expandedKey);
+  const etas = stopEtas.get(expandedKey) ?? [];
+  if (!targetStop || !etas.length) return;
+
+  busMarkersLayer = L.layerGroup().addTo(map);
+  busApproachLayer = L.layerGroup().addTo(map);
+
+  etas.forEach((eta, index) => {
+    if (!isValidCoord(eta.busLat, eta.busLng)) return;
+    if (!isValidCoord(targetStop.lat, targetStop.lng)) return;
+
+    L.polyline(
+      [[eta.busLat, eta.busLng], [targetStop.lat, targetStop.lng]],
+      {
+        color: index === 0 ? '#ffb020' : '#6b8cff',
+        weight: 2,
+        opacity: 0.75,
+        dashArray: '6 6',
+      },
+    ).addTo(busApproachLayer);
+
+    const label = formatBusArrivalLabel(eta);
+    L.marker([eta.busLat, eta.busLng], {
+      icon: busLocationIcon(eta.etaClass, index),
+      zIndexOffset: 800 + index,
+    })
+      .bindTooltip(escapeHtml(label), {
+        direction: 'top',
+        opacity: 0.9,
+        offset: [0, -18],
+        className: 'bus-stop-tooltip',
+      })
+      .addTo(busMarkersLayer);
+  });
+}
+
 function updateMap({ currentIdx, closestIdx }) {
   if (!map) return;
 
@@ -858,6 +936,7 @@ function renderEtaList(etas) {
     <div class="bus-eta-item ${eta.etaClass}">
       <span class="bus-eta-mins">${formatEtaMinsLabel(eta)}</span>
       ${eta.remark ? `<span class="bus-eta-remark">${escapeHtml(eta.remark)}</span>` : ''}
+      ${eta.busStopName || eta.busAwaitingDepart ? `<span class="bus-eta-location">${escapeHtml(formatBusArrivalLabel(eta))}</span>` : ''}
       <span class="bus-eta-time">${escapeHtml(eta.time)}</span>
     </div>`).join('');
 }
@@ -947,7 +1026,8 @@ async function fetchStopEtas(stop) {
       break;
   }
   try {
-    return await fetchEtas(rs);
+    const etas = await fetchEtas(rs);
+    return enrichEtasWithBusLocation(etas, rs, stop, routeStops);
   } catch {
     return [];
   }
@@ -959,10 +1039,8 @@ async function toggleStop(stop, forceOpen = false) {
   if (open) {
     expandedStops.clear();
     expandedStops.add(key);
-    if (!stopEtas.has(key)) {
-      const etas = await fetchStopEtas(stop);
-      stopEtas.set(key, etas);
-    }
+    const etas = await fetchStopEtas(stop);
+    stopEtas.set(key, etas);
     const marker = markers.get(key);
     if (marker && stop.lat != null && stop.lng != null) {
       map?.setView([stop.lat, stop.lng], STOP_MAP_ZOOM, { animate: true });
@@ -971,12 +1049,14 @@ async function toggleStop(stop, forceOpen = false) {
   } else {
     expandedStops.delete(key);
     markers.get(key)?.closeTooltip();
+    clearBusLocationMarkers();
   }
   const userPos = getUserPosition();
   renderStops({
     currentIdx: findCurrentStopIndex(),
     closestIdx: findClosestStopIndex(userPos),
   });
+  updateBusLocationMarkers();
 }
 
 async function refresh({ silent = false } = {}) {
@@ -999,12 +1079,14 @@ async function refresh({ silent = false } = {}) {
   }));
 
   clearMtrCache();
+  clearRouteWideEtaCache();
   lastRefresh = new Date();
   const userPos = getUserPosition();
   renderStops({
     currentIdx: findCurrentStopIndex(),
     closestIdx: findClosestStopIndex(userPos),
   });
+  updateBusLocationMarkers();
 }
 
 function startRefreshTimer() {
@@ -1072,12 +1154,14 @@ async function init() {
     }
 
     renderStops({ currentIdx, closestIdx });
+    updateBusLocationMarkers();
     lastRefresh = new Date();
     scheduleHeadwayFeatures();
 
     requestAnimationFrame(() => {
       map?.invalidateSize();
       updateMap({ currentIdx, closestIdx });
+      updateBusLocationMarkers();
       document.querySelector('.bus-stop-current')?.scrollIntoView({ block: 'center' });
     });
 
@@ -1097,6 +1181,7 @@ async function init() {
         const closestIdx = findClosestStopIndex(userPos);
         updateMap({ currentIdx, closestIdx });
         renderStops({ currentIdx, closestIdx });
+        updateBusLocationMarkers();
       } finally {
         btn.classList.remove('spinning');
       }

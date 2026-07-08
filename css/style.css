@@ -934,6 +934,16 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   color: #ff8080;
 }
 
+.bus-eta-location {
+  flex: 1;
+  min-width: 0;
+  color: var(--white-70);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .bus-eta-time {
   flex-shrink: 0;
   color: var(--white-54);
@@ -953,6 +963,54 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   background: #1e64ff;
   border: 2px solid var(--white);
   box-shadow: 0 0 0 4px rgba(30, 100, 255, 0.35);
+}
+
+.bus-vehicle-marker-wrap {
+  background: transparent;
+  border: none;
+}
+
+.bus-vehicle-marker {
+  position: relative;
+  display: block;
+  width: 28px;
+  height: 28px;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+}
+
+.bus-vehicle-icon {
+  display: block;
+  width: 28px;
+  height: 28px;
+  fill: #ffb020;
+  stroke: var(--white);
+  stroke-width: 1.2;
+}
+
+.bus-vehicle-marker.eta-scheduled .bus-vehicle-icon {
+  fill: var(--scheduled);
+}
+
+.bus-vehicle-marker.eta-error .bus-vehicle-icon {
+  fill: #888;
+}
+
+.bus-vehicle-num {
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  border: 1.5px solid var(--white);
+  background: rgba(0, 0, 0, 0.82);
+  color: var(--white);
+  font-family: 'Hibiya24', serif;
+  font-size: 9px;
+  font-weight: bold;
+  line-height: 11px;
+  text-align: center;
 }
 
 .bus-marker-wrap {
