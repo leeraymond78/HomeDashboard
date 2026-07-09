@@ -96,6 +96,9 @@ const CHEVRON_SVG = `
     <polyline points="6 9 12 15 18 9"/>
   </svg>`;
 
+const HKO_APP_LINK = `
+  <a class="weather-hko-btn" href="myobservatory://">開啟「我的天文台」App 查看更多</a>`;
+
 function hkoUrl(dataType) {
   return `${HKO_API}?dataType=${dataType}&lang=${HKO_LANG}`;
 }
@@ -397,6 +400,7 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
       </button>
       <div class="group-body weather-body">
         <div class="weather-error error-msg">天氣資料暫時無法取得</div>
+        ${HKO_APP_LINK}
       </div>`;
     bindWeatherToggle(root);
     syncWeatherOpen(root);
@@ -449,6 +453,7 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
           ${alertLines ? `<ul class="weather-alert-list">${alertLines}</ul>` : ''}
         </div>` : ''}
       </div>
+      ${HKO_APP_LINK}
     </div>`;
 
   bindWeatherToggle(root);

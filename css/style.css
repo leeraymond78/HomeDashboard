@@ -601,6 +601,27 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   color: var(--dest);
 }
 
+.weather-hko-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--white-54);
+  font-family: inherit;
+  font-size: 16px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.weather-hko-btn:active {
+  color: var(--white-70);
+}
+
 .eta-row-clickable {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
