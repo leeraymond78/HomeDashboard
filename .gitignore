@@ -28,3 +28,6 @@ node_modules/
 
 # Local config overrides
 config.local.json
+
+# Generated at serve/deploy time
+build-info.json
