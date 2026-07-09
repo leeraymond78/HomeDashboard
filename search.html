@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>路線検索</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="route-search-page">
+  <header class="route-search-header">
+    <nav class="page-nav page-nav--back">
+      <a class="page-nav-link page-nav-link--back" href="./">
+        <svg class="page-nav-back-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        戻る
+      </a>
+    </nav>
+    <div id="route-search-input" class="route-search-input route-search-input--empty" aria-live="polite"></div>
+  </header>
+
+  <main class="route-search-main">
+    <ul id="route-search-results" class="route-search-results" role="listbox" aria-label="検索結果"></ul>
+  </main>
+
+  <div id="route-search-keyboard" class="route-search-keyboard" role="group" aria-label="路線番号キーボード"></div>
+
+  <script src="js/register-sw.js"></script>
+  <script src="js/route-search.js" type="module"></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 /* HomeDashboard service worker — app shell + runtime CDN cache. */
-const SHELL_VERSION = 'v3';
+const SHELL_VERSION = 'v7';
 const SHELL_CACHE = `home-dashboard-shell-${SHELL_VERSION}`;
 const RUNTIME_CACHE = `home-dashboard-runtime-${SHELL_VERSION}`;
 
@@ -7,6 +7,7 @@ const SHELL_ASSETS = [
   './',
   'index.html',
   'bus.html',
+  'search.html',
   'manifest.json',
   'config.json',
   'build-info.json',
@@ -19,6 +20,8 @@ const SHELL_ASSETS = [
   'js/utils.js',
   'js/weather.js',
   'js/pull-to-refresh.js',
+  'js/route-search.js',
+  'js/route-search-api.js',
   'js/register-sw.js',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -35,6 +38,11 @@ const CDN_ASSETS = [
 ];
 
 const CDN_HOSTS = new Set(['unpkg.com']);
+const ROUTE_API_HOSTS = new Set([
+  'data.etabus.gov.hk',
+  'rt.data.gov.hk',
+  'data.etagmb.gov.hk',
+]);
 
 function scopeUrl(path) {
   return new URL(path, self.registration.scope).href;
@@ -133,6 +141,10 @@ function isCdnAsset(url) {
   return CDN_HOSTS.has(url.hostname);
 }
 
+function isRouteApi(url) {
+  return ROUTE_API_HOSTS.has(url.hostname);
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -141,6 +153,8 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin !== self.location.origin) {
     if (isCdnAsset(url)) {
+      event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE));
+    } else if (isRouteApi(url)) {
       event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE));
     }
     return;

@@ -2,6 +2,7 @@ import { loadWeatherSection, startWeatherRefresh } from './weather.js';
 import { distanceM, formatDistance, bootstrapLocation, geolocationBlockReason, getGeolocationPermission, getLastGeoError, getUserPosition, requestUserPosition } from './location.js';
 import { escapeHtml } from './utils.js';
 import { initPullToRefresh } from './pull-to-refresh.js';
+import { ensureRouteSearchIndex } from './route-search-api.js';
 import {
   SOCIF_GEO,
   clearMtrCache,
@@ -789,6 +790,12 @@ async function init() {
 
     document.getElementById('refresh-btn').addEventListener('click', () => refreshAll({ spinButton: true }));
     initPullToRefresh(() => refreshAll());
+    const prefetchSearch = () => ensureRouteSearchIndex().catch(() => {});
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(prefetchSearch, { timeout: 5000 });
+    } else {
+      setTimeout(prefetchSearch, 1500);
+    }
   } catch (err) {
     document.getElementById('groups').innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
   }

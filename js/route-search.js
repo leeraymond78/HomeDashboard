@@ -1,0 +1,276 @@
+import { escapeHtml } from './utils.js';
+import { operatorClass, serializeRouteStop } from './transit-api.js';
+import {
+  ensureRouteSearchIndex,
+  enrichGmbResults,
+  getAlphabetCandidates,
+  isRouteSearchIndexReady,
+  resolveRouteStop,
+  searchRoutesInstant,
+  setRouteSearchProgressCallback,
+} from './route-search-api.js';
+
+const NUMERIC_KEYS = [
+  ['1', '2', '3'],
+  ['4', '5', '6'],
+  ['7', '8', '9'],
+];
+
+const BACKSPACE_ICON = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+  <path d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-3 12.59L17.59 17 14 13.41 10.41 17 9 15.59 12.59 12 9 8.41 10.41 7 14 10.59 17.59 7 19 8.41 15.41 12 19 15.59z"/>
+</svg>`;
+
+const OPERATOR_LABEL = { kmb: '九巴', nwfb: '城巴', mtr: '港鐵', gmb: '小巴' };
+const LOAD_LABEL = {
+  cache: 'キャッシュから読み込み中…',
+  kmb: '九巴データを読み込み中…',
+  nwfb: '城巴データを読み込み中…',
+  mtr: '港鐵バスデータを読み込み中…',
+  gmb: '小巴リストを読み込み中…',
+};
+
+/** @type {string} */
+let query = '';
+/** @type {number} */
+let searchGeneration = 0;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let searchTimer = null;
+/** @type {boolean} */
+let indexReady = false;
+
+let inputEl;
+let resultsEl;
+let alphaPadEl;
+let keyboardEl;
+
+function operatorLabel(type) {
+  return OPERATOR_LABEL[type] ?? type;
+}
+
+function formatMatchDest(match) {
+  if (match.dest) return `往${match.dest}`;
+  return match.label.replace(/^[^\s]+\s*/, '');
+}
+
+function isSpecialService(match) {
+  return match.type === 'kmb' && match.service_type != null && match.service_type !== 1;
+}
+
+function formatMatchOrig(match) {
+  return match.orig ?? '';
+}
+
+function navigateToBus(routeStop) {
+  const back = encodeURIComponent('search.html');
+  window.location.href = `bus.html?${serializeRouteStop(routeStop)}&back=${back}`;
+}
+
+function setKeyboardEnabled(enabled) {
+  if (!keyboardEl) return;
+  if (enabled) {
+    keyboardEl.removeAttribute('inert');
+    keyboardEl.classList.remove('route-search-keyboard--disabled');
+  } else {
+    keyboardEl.setAttribute('inert', '');
+    keyboardEl.classList.add('route-search-keyboard--disabled');
+  }
+}
+
+function renderLoadProgress({ phase, loaded, total }) {
+  const text = LOAD_LABEL[phase] ?? '路線データを読み込み中…';
+  renderResultsHint(text);
+}
+
+function renderInput() {
+  inputEl.textContent = query || '路線番号を入力';
+  inputEl.classList.toggle('route-search-input--empty', !query);
+  updateAlphaKeyboard();
+}
+
+function updateAlphaKeyboard() {
+  if (!alphaPadEl) return;
+  const candidates = indexReady ? getAlphabetCandidates(query) : [];
+  alphaPadEl.innerHTML = '';
+  alphaPadEl.classList.toggle('route-search-keyboard-alpha--empty', candidates.length === 0);
+
+  for (const key of candidates) {
+    alphaPadEl.appendChild(createKey(key, '', () => appendChar(key)));
+  }
+}
+
+function renderResultsHint(text) {
+  resultsEl.innerHTML = `<li class="route-search-hint">${escapeHtml(text)}</li>`;
+}
+
+function renderResults(matches) {
+  if (!query) {
+    renderResultsHint('番号を入力すると路線が表示されます');
+    return;
+  }
+  if (!matches.length) {
+    renderResultsHint('該当する路線がありません');
+    return;
+  }
+
+  resultsEl.innerHTML = matches.map((match, i) => `
+    <li>
+      <button
+        class="route-search-result"
+        type="button"
+        data-index="${i}"
+        role="option"
+        aria-selected="false"
+      >
+        <span class="route-search-result-id">
+          <span class="route-search-result-route ${operatorClass(match.type)}">${escapeHtml(match.routeId)}</span>
+          <span class="route-search-result-op">${escapeHtml(operatorLabel(match.type))}</span>
+        </span>
+        <span class="route-search-result-meta">
+          <span class="route-search-result-dest-row">
+            <span class="route-search-result-dest">${escapeHtml(formatMatchDest(match))}</span>
+            ${isSpecialService(match) ? '<span class="route-search-result-tag">特別便</span>' : ''}
+          </span>
+          ${formatMatchOrig(match) ? `<span class="route-search-result-orig">${escapeHtml(formatMatchOrig(match))}</span>` : ''}
+        </span>
+      </button>
+    </li>`).join('');
+
+  resultsEl.querySelectorAll('.route-search-result').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const index = parseInt(btn.getAttribute('data-index'), 10);
+      selectMatch(matches[index], btn);
+    });
+  });
+}
+
+async function runSearch() {
+  const gen = ++searchGeneration;
+  renderInput();
+
+  if (!indexReady) return;
+
+  if (!query) {
+    renderResults([]);
+    return;
+  }
+
+  const instant = searchRoutesInstant(query);
+  if (gen !== searchGeneration) return;
+  renderResults(instant);
+
+  try {
+    const matches = await enrichGmbResults(query, instant);
+    if (gen !== searchGeneration) return;
+    renderResults(matches);
+  } catch {
+    if (gen !== searchGeneration) return;
+    renderResults(instant);
+  }
+}
+
+function scheduleSearch() {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchTimer = null;
+    runSearch();
+  }, 80);
+}
+
+function appendChar(char) {
+  if (!indexReady || query.length >= 8) return;
+  query += char;
+  scheduleSearch();
+}
+
+function backspace() {
+  if (!indexReady || !query) return;
+  query = query.slice(0, -1);
+  scheduleSearch();
+}
+
+function clearQuery() {
+  if (!indexReady || !query) return;
+  query = '';
+  scheduleSearch();
+}
+
+async function selectMatch(match, buttonEl) {
+  if (!match || buttonEl.disabled) return;
+  buttonEl.disabled = true;
+  buttonEl.classList.add('route-search-result--loading');
+
+  try {
+    const routeStop = await resolveRouteStop(match);
+    navigateToBus(routeStop);
+  } catch (err) {
+    buttonEl.disabled = false;
+    buttonEl.classList.remove('route-search-result--loading');
+    renderResultsHint(err instanceof Error ? err.message : '路線を開けませんでした');
+  }
+}
+
+function createKey(label, className, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `route-search-key${className ? ` ${className}` : ''}`;
+  if (label.includes('<svg')) {
+    btn.innerHTML = label;
+    btn.setAttribute('aria-label', '削除');
+  } else {
+    btn.textContent = label;
+  }
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+function buildKeyboard(container) {
+  const numPad = document.createElement('div');
+  numPad.className = 'route-search-keyboard-num';
+
+  for (const row of NUMERIC_KEYS) {
+    for (const key of row) {
+      numPad.appendChild(createKey(key, '', () => appendChar(key)));
+    }
+  }
+
+  numPad.appendChild(createKey('全消', 'route-search-key--clear', clearQuery));
+  numPad.appendChild(createKey('0', '', () => appendChar('0')));
+  numPad.appendChild(createKey(BACKSPACE_ICON, 'route-search-key--backspace', backspace));
+
+  alphaPadEl = document.createElement('div');
+  alphaPadEl.className = 'route-search-keyboard-alpha route-search-keyboard-alpha--empty';
+
+  container.append(numPad, alphaPadEl);
+}
+
+async function loadIndex() {
+  setRouteSearchProgressCallback(renderLoadProgress);
+  setKeyboardEnabled(false);
+  renderLoadProgress({ phase: 'kmb', loaded: 0, total: 1 });
+
+  try {
+    await ensureRouteSearchIndex();
+    indexReady = isRouteSearchIndexReady();
+    setKeyboardEnabled(true);
+    renderInput();
+    renderResultsHint('番号を入力すると路線が表示されます');
+  } catch {
+    renderResultsHint('路線データの読み込みに失敗しました');
+  } finally {
+    setRouteSearchProgressCallback(null);
+  }
+}
+
+function init() {
+  inputEl = document.getElementById('route-search-input');
+  resultsEl = document.getElementById('route-search-results');
+  keyboardEl = document.getElementById('route-search-keyboard');
+
+  if (!inputEl || !resultsEl || !keyboardEl) return;
+
+  buildKeyboard(keyboardEl);
+  renderInput();
+  loadIndex();
+}
+
+init();
