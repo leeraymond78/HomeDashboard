@@ -1,11 +1,13 @@
 import { loadWeatherSection, startWeatherRefresh } from './weather.js';
 import { distanceM, formatDistance, bootstrapLocation, geolocationBlockReason, getGeolocationPermission, getLastGeoError, getUserPosition, requestUserPosition } from './location.js';
-import { escapeHtml, escapeAttr } from './utils.js';
+import { escapeHtml } from './utils.js';
 import { initPullToRefresh } from './pull-to-refresh.js';
 import {
   SOCIF_GEO,
   clearMtrCache,
+  enrichEtasWithBusLocation,
   fetchEtas,
+  fetchRouteStops,
   getMtrStopGeo,
   routeStopId,
   serializeRouteStop,
@@ -40,6 +42,8 @@ const groupEtas = new Map();
 const groupState = new Map();
 /** @type {Set<number>} */
 const groupShowAllEtas = new Set();
+/** @type {Map<string, import('./transit-api.js').RouteStopInfo[]>} */
+const routeStopsCache = new Map();
 
 async function loadConfig() {
   const res = await fetch('config.json');
@@ -208,22 +212,49 @@ function setupLocationPrompt() {
   });
 }
 
+function routeStopsCacheKey(rs) {
+  if (rs.type === 'gmb') return `gmb:${rs.realRouteId}:${rs.routeSeq}`;
+  if (rs.type === 'mtr') return `mtr:${rs.stopId}`;
+  if (rs.type === 'socif') return `socif:${rs.route}:${rs.routeSeq}`;
+  return `${rs.type}:${rs.route ?? rs.routeId}:${rs.bound ?? rs.dir ?? ''}:${rs.service_type ?? 1}`;
+}
+
+/** @param {import('./transit-api.js').RouteStopInfo[]} routeStops @param {RouteStop} rs */
+function findTargetStop(routeStops, rs) {
+  if (!routeStops.length) return null;
+  if (rs.type === 'socif') return routeStops.find((s) => s.seq === rs.stopSeq) ?? null;
+  if (rs.type === 'kmb' || rs.type === 'nwfb') return routeStops.find((s) => s.stopId === rs.stop) ?? null;
+  return routeStops.find((s) => s.stopId === rs.stopId) ?? null;
+}
+
+async function getRouteStops(rs) {
+  const key = routeStopsCacheKey(rs);
+  const cached = routeStopsCache.get(key);
+  if (cached) return cached;
+  try {
+    const stops = await fetchRouteStops(rs);
+    routeStopsCache.set(key, stops);
+    return stops;
+  } catch {
+    return [];
+  }
+}
+
 async function fetchGroupEtas(group) {
   const tasks = group.routeStops.map(async (rs) => {
     try {
-      return fetchEtas(rs);
+      const etas = await fetchEtas(rs);
+      if (!etas.length) return etas;
+      const routeStops = await getRouteStops(rs);
+      const targetStop = findTargetStop(routeStops, rs);
+      if (!targetStop) return etas;
+      return enrichEtasWithBusLocation(etas, rs, targetStop, routeStops);
     } catch {
       return [];
     }
   });
   const results = await Promise.all(tasks);
   return results.flat().sort((a, b) => a.etaTime - b.etaTime);
-}
-
-function scrollSpan(text, className) {
-  const safe = escapeHtml(text);
-  if (!text) return '';
-  return `<span class="${className}" data-text="${escapeAttr(text)}">${safe}</span>`;
 }
 
 function navigateToBusDetail(routeStop) {
@@ -262,18 +293,37 @@ function setScrollText(td, text, className) {
   const next = String(text ?? '');
   let span = td.querySelector(`.${className}`);
   if (!next) {
-    if (td.childElementCount) td.replaceChildren();
+    span?.remove();
     return;
   }
   if (!span) {
-    td.innerHTML = scrollSpan(next, className);
-    return;
+    span = document.createElement('span');
+    span.className = className;
+    td.appendChild(span);
   }
   if (span.textContent !== next) {
     span.textContent = next;
     span.classList.remove('scroll');
     span.style.removeProperty('--scroll-offset');
   }
+}
+
+function etaStopsLeft(row) {
+  if (row.busAwaitingDepart || row.remark === '発車待ち') return null;
+  if (row.busStopsLeft != null && row.busStopsLeft > 0) return row.busStopsLeft;
+  return null;
+}
+
+function remarkCellText(row) {
+  const stopsLeft = etaStopsLeft(row);
+  if (stopsLeft != null) return `あと${stopsLeft}駅`;
+  return String(row.remark ?? '');
+}
+
+function setRemarkCell(td, row) {
+  const text = remarkCellText(row);
+  setScrollText(td, text, 'remark-scroll');
+  if (!text) td.replaceChildren();
 }
 
 function expressBadge(expressTd) {
@@ -305,7 +355,7 @@ function patchEtaRow(tr, row) {
   setCellClass(minsTd, `eta-mins ${row.etaClass}`);
   setCellText(minsTd, row.mins);
 
-  setScrollText(remarkTd, row.remark, 'remark-scroll');
+  setRemarkCell(remarkTd, row);
 }
 
 const ETA_TABLE_COLGROUP = `

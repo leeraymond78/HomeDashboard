@@ -288,16 +288,44 @@ function labelBusLocation(routeStops, location, etaMins, targetStop) {
   const origin = routeOriginStop(routeStops);
   const upstream = routeStops.filter((stop) =>
     stop.seq <= targetStop.seq && Number.isFinite(stop.lat) && Number.isFinite(stop.lng));
-  const nearest = findNearestRouteStop(upstream, location.lat, location.lng);
-  if (origin && nearest?.stopId === origin.stopId) {
-    return { ...location, name: null, awaitingDepart: true, stopSeq: nearest?.seq ?? null, stopsLeft: null };
+  let workingLocation = location;
+  const nearest = findNearestRouteStop(upstream, workingLocation.lat, workingLocation.lng);
+  if (origin && nearest?.stopId === origin.stopId && etaMins > 2) {
+    const fallback = estimateBackwardFromTarget(routeStops, targetStop, etaMins);
+    if (fallback) workingLocation = fallback;
   }
-  const stopsLeft = nearest ? Math.max(0, targetStop.seq - nearest.seq) : null;
+  const nearestFinal = findNearestRouteStop(upstream, workingLocation.lat, workingLocation.lng);
+  if (origin && nearestFinal?.stopId === origin.stopId) {
+    if (etaMins > 2) {
+      const stopsLeft = estimateStopsLeftFromEta(routeStops, targetStop, etaMins);
+      if (stopsLeft != null && stopsLeft > 0) {
+        const fallback = estimateBackwardFromTarget(routeStops, targetStop, etaMins);
+        const nearestBack = fallback
+          ? findNearestRouteStop(upstream, fallback.lat, fallback.lng)
+          : nearestFinal;
+        return {
+          ...(fallback ?? workingLocation),
+          name: nearestBack?.name ?? null,
+          awaitingDepart: false,
+          stopSeq: nearestBack?.seq ?? null,
+          stopsLeft,
+        };
+      }
+    }
+    return {
+      ...workingLocation,
+      name: null,
+      awaitingDepart: true,
+      stopSeq: nearestFinal?.seq ?? null,
+      stopsLeft: null,
+    };
+  }
+  const stopsLeft = nearestFinal ? Math.max(0, targetStop.seq - nearestFinal.seq) : null;
   return {
-    ...location,
-    name: nearest?.name ?? null,
+    ...workingLocation,
+    name: nearestFinal?.name ?? null,
     awaitingDepart: false,
-    stopSeq: nearest?.seq ?? null,
+    stopSeq: nearestFinal?.seq ?? null,
     stopsLeft,
   };
 }
@@ -500,6 +528,33 @@ function buildNwfbPerStopTimeline(routeWideEtas, { targetStop, eta, routeStops, 
 function segmentTravelMinutes(a, b) {
   const dist = distanceM(a, b);
   return Math.max(0.75, dist / 350);
+}
+
+/**
+ * @param {RouteStopInfo[]} routeStops
+ * @param {RouteStopInfo} targetStop
+ * @param {number} etaMins
+ * @returns {number | null}
+ */
+function estimateStopsLeftFromEta(routeStops, targetStop, etaMins) {
+  if (etaMins <= 1) return 0;
+  const stops = routeStops
+    .filter((stop) => stop.seq <= targetStop.seq && Number.isFinite(stop.lat) && Number.isFinite(stop.lng))
+    .sort((a, b) => a.seq - b.seq);
+  const targetIdx = stops.findIndex((stop) => stop.stopId === targetStop.stopId);
+  if (targetIdx < 0) return null;
+
+  let remaining = etaMins;
+  let idx = targetIdx;
+  while (idx > 0 && remaining > 0) {
+    const segmentMins = segmentTravelMinutes(stops[idx - 1], stops[idx]);
+    if (remaining <= segmentMins) {
+      return Math.max(0, targetStop.seq - stops[idx - 1].seq);
+    }
+    remaining -= segmentMins;
+    idx -= 1;
+  }
+  return Math.max(0, targetStop.seq - stops[0].seq);
 }
 
 /**

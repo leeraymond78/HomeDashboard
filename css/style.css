@@ -266,7 +266,7 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 .col-express { width: 46px; }
 .col-time { width: 86px; }
 .col-mins { width: 26px; }
-.col-remark { width: 4.5em; min-width: 72px; }
+.col-remark { width: 5.5em; min-width: 88px; }
 
 .route-id {
   font-size: 24px;
