@@ -240,21 +240,81 @@ async function getRouteStops(rs) {
   }
 }
 
-async function fetchGroupEtas(group) {
-  const tasks = group.routeStops.map(async (rs) => {
-    try {
-      const etas = await fetchEtas(rs);
-      if (!etas.length) return etas;
-      const routeStops = await getRouteStops(rs);
-      const targetStop = findTargetStop(routeStops, rs);
-      if (!targetStop) return etas;
-      return enrichEtasWithBusLocation(etas, rs, targetStop, routeStops);
-    } catch {
-      return [];
-    }
+/** @type {Map<number, number>} */
+const enrichGeneration = new Map();
+
+function etaIdentity(row) {
+  const rs = row.routeStop;
+  const routeStopKey = rs ? serializeRouteStop(rs) : '';
+  return `${routeStopKey}|${row.routeId}|${row.etaTime.getTime()}|${row.etaSeq ?? ''}`;
+}
+
+function mergeBasicRefreshForRoute(index, rs, fresh) {
+  const routeKey = serializeRouteStop(rs);
+  const current = groupEtas.get(index) ?? [];
+  const prevForRoute = new Map(
+    current
+      .filter((row) => row.routeStop && serializeRouteStop(row.routeStop) === routeKey)
+      .map((row) => [etaIdentity(row), row]),
+  );
+  const others = current.filter((row) => !row.routeStop || serializeRouteStop(row.routeStop) !== routeKey);
+  const merged = fresh.map((row) => {
+    const prev = prevForRoute.get(etaIdentity(row));
+    if (!prev) return row;
+    return {
+      ...row,
+      busLat: prev.busLat,
+      busLng: prev.busLng,
+      busStopSeq: prev.busStopSeq,
+      busStopName: prev.busStopName,
+      busStopsLeft: prev.busStopsLeft,
+      busAwaitingDepart: prev.busAwaitingDepart,
+    };
   });
-  const results = await Promise.all(tasks);
-  return results.flat().sort((a, b) => a.etaTime - b.etaTime);
+  groupEtas.set(index, [...others, ...merged].sort((a, b) => a.etaTime - b.etaTime));
+}
+
+function applyEnrichedEtas(index, enriched) {
+  const byId = new Map(enriched.map((row) => [etaIdentity(row), row]));
+  const current = groupEtas.get(index) ?? [];
+  let changed = false;
+  const updated = current.map((row) => {
+    const next = byId.get(etaIdentity(row));
+    if (!next) return row;
+    if (
+      next.busStopsLeft === row.busStopsLeft
+      && next.busAwaitingDepart === row.busAwaitingDepart
+      && next.remark === row.remark
+    ) {
+      return row;
+    }
+    changed = true;
+    return next;
+  });
+  if (!changed) return;
+  groupEtas.set(index, updated.sort((a, b) => a.etaTime - b.etaTime));
+  updateGroup(index);
+}
+
+async function enrichRouteStopEtas(index, rs, gen) {
+  if (enrichGeneration.get(index) !== gen) return;
+  try {
+    const current = groupEtas.get(index) ?? [];
+    const routeKey = serializeRouteStop(rs);
+    const etasForRoute = current.filter((row) =>
+      row.routeStop && serializeRouteStop(row.routeStop) === routeKey);
+    if (!etasForRoute.length) return;
+
+    const routeStops = await getRouteStops(rs);
+    const targetStop = findTargetStop(routeStops, rs);
+    if (!targetStop) return;
+
+    const enriched = await enrichEtasWithBusLocation(etasForRoute, rs, targetStop, routeStops);
+    if (enrichGeneration.get(index) !== gen) return;
+    applyEnrichedEtas(index, enriched);
+  } catch {
+    /* ignore enrichment errors */
+  }
 }
 
 function navigateToBusDetail(routeStop) {
@@ -577,21 +637,45 @@ async function refreshGroup(index, { silent = false } = {}) {
   const group = config.groups[index];
   if (!group.open) return;
 
-  if (!silent && !groupEtas.has(index)) {
+  const gen = (enrichGeneration.get(index) ?? 0) + 1;
+  enrichGeneration.set(index, gen);
+
+  const isFirstLoad = !groupEtas.has(index);
+  if (!silent && isFirstLoad) {
     groupState.set(index, 'loading');
+    groupEtas.set(index, []);
     updateGroup(index);
   }
 
-  try {
-    const etas = await fetchGroupEtas(group);
-    groupEtas.set(index, etas);
-    groupState.set(index, 'ok');
-    lastRefresh = new Date();
-  } catch {
-    if (!silent || !groupEtas.has(index)) groupState.set(index, 'error');
-  }
+  let hadError = false;
+  const tasks = group.routeStops.map(async (rs) => {
+    if (enrichGeneration.get(index) !== gen) return;
+    try {
+      const etas = await fetchEtas(rs);
+      if (enrichGeneration.get(index) !== gen) return;
 
-  updateGroup(index);
+      if (silent && groupEtas.has(index)) {
+        mergeBasicRefreshForRoute(index, rs, etas);
+      } else {
+        const current = groupEtas.get(index) ?? [];
+        groupEtas.set(index, [...current, ...etas].sort((a, b) => a.etaTime - b.etaTime));
+      }
+
+      groupState.set(index, 'ok');
+      lastRefresh = new Date();
+      updateGroup(index);
+      await enrichRouteStopEtas(index, rs, gen);
+    } catch {
+      hadError = true;
+    }
+  });
+
+  await Promise.all(tasks);
+
+  if (hadError && isFirstLoad && !(groupEtas.get(index)?.length)) {
+    groupState.set(index, 'error');
+    updateGroup(index);
+  }
 }
 
 function refreshOpenGroups({ silent = true } = {}) {
