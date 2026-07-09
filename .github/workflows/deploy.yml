@@ -26,9 +26,17 @@ jobs:
 
       - name: Write build info
         run: |
-          printf '{"build":%s}\n' "${{ github.run_number }}" > build-info.json
+          BUILD="${{ github.run_number }}"
+          printf '{"build":%s}\n' "$BUILD" > build-info.json
           test -f build-info.json
           cat build-info.json
+          sed -i "s/data-build=\"0\"/data-build=\"$BUILD\"/" index.html
+
+      - name: Verify build artifact
+        run: |
+          test -f build-info.json
+          grep -q "\"build\":" build-info.json
+          grep -q "data-build=\"${{ github.run_number }}\"" index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

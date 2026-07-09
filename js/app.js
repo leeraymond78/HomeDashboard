@@ -574,15 +574,25 @@ async function refreshAll({ spinButton = false } = {}) {
   }
 }
 
+function showBuildStamp(el, build) {
+  if (Number.isFinite(build) && build > 0) el.textContent = `build ${build}`;
+}
+
 async function loadBuildStamp() {
   const el = document.getElementById('build-stamp');
   if (!el) return;
+
+  const inline = Number(el.dataset.build);
+  if (Number.isFinite(inline) && inline > 0) {
+    showBuildStamp(el, inline);
+    return;
+  }
+
   try {
     const res = await fetch('build-info.json', { cache: 'no-store' });
     if (!res.ok) return;
     const info = await res.json();
-    const build = Number(info.build);
-    if (Number.isFinite(build) && build > 0) el.textContent = `build ${build}`;
+    showBuildStamp(el, Number(info.build));
   } catch {
     /* ignore */
   }
