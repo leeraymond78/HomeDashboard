@@ -1037,7 +1037,28 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 }
 
 .bus-stop-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s ease-out;
+}
+
+.bus-stop.open .bus-stop-body {
+  grid-template-rows: 1fr;
+}
+
+.bus-stop-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.bus-stop.open .bus-stop-body-inner {
   padding: 0 0.75rem 0.75rem 3.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bus-stop-body {
+    transition: none;
+  }
 }
 
 .bus-stop-empty {

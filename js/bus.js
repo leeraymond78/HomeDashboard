@@ -1166,6 +1166,51 @@ function renderEtaList(etas) {
   }).join('');
 }
 
+function findStopSection(key) {
+  const container = document.getElementById('bus-stops');
+  if (!container) return null;
+  return [...container.querySelectorAll('.bus-stop')].find((section) => section.dataset.stopKey === key) ?? null;
+}
+
+function syncBusStopOpen(section, isOpen) {
+  if (!section) return;
+  section.classList.toggle('open', isOpen);
+  const header = section.querySelector('.bus-stop-header');
+  if (header) header.setAttribute('aria-expanded', String(isOpen));
+  const inner = section.querySelector('.bus-stop-body-inner');
+  if (inner) {
+    inner.toggleAttribute('inert', !isOpen);
+    inner.setAttribute('aria-hidden', String(!isOpen));
+    if (!isOpen) scheduleBusStopBodyClear(section);
+  }
+}
+
+function scheduleBusStopBodyClear(section) {
+  const panel = section.querySelector('.bus-stop-body');
+  const inner = section.querySelector('.bus-stop-body-inner');
+  if (!panel || !inner) {
+    inner?.replaceChildren();
+    return;
+  }
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    inner.replaceChildren();
+    return;
+  }
+
+  const onEnd = (e) => {
+    if (e.target !== panel || e.propertyName !== 'grid-template-rows') return;
+    panel.removeEventListener('transitionend', onEnd);
+    if (!section.classList.contains('open')) inner.replaceChildren();
+  };
+  panel.addEventListener('transitionend', onEnd);
+}
+
+function updateStopEtaBody(section, etas) {
+  const inner = section?.querySelector('.bus-stop-body-inner');
+  if (inner) inner.innerHTML = renderEtaList(etas);
+}
+
 function renderStops({ currentIdx, closestIdx }) {
   const container = document.getElementById('bus-stops');
   if (!routeStops.length) {
@@ -1179,13 +1224,12 @@ function renderStops({ currentIdx, closestIdx }) {
     const isNext = index === currentIdx + 1;
     const key = stopKey(stop);
     const expanded = expandedStops.has(key);
-    const etas = stopEtas.get(key) ?? [];
+    const etas = expanded ? (stopEtas.get(key) ?? []) : [];
     const rowClass = [
       'bus-stop',
       isCurrent ? 'bus-stop-current' : '',
       isClosest ? 'bus-stop-closest' : '',
       isNext && !isClosest ? 'bus-stop-next' : '',
-      expanded ? 'open' : '',
     ].filter(Boolean).join(' ');
 
     const badges = [];
@@ -1209,12 +1253,17 @@ function renderStops({ currentIdx, closestIdx }) {
             <polyline points="6 9 12 15 18 9"/>
           </svg>
         </button>
-        <div class="bus-stop-body" ${expanded ? '' : 'hidden'}>
-          ${renderEtaList(etas)}
+        <div class="bus-stop-body">
+          <div class="bus-stop-body-inner">
+            ${renderEtaList(etas)}
+          </div>
         </div>
       </section>`;
   }).join('');
 
+  container.querySelectorAll('.bus-stop').forEach((section) => {
+    syncBusStopOpen(section, expandedStops.has(section.dataset.stopKey));
+  });
 }
 
 function bindStopClicks() {
@@ -1260,12 +1309,22 @@ async function fetchStopEtas(stop) {
 
 async function toggleStop(stop, forceOpen = false) {
   const key = stopKey(stop);
-  const open = forceOpen || !expandedStops.has(key);
-  if (open) {
+  const opening = forceOpen || !expandedStops.has(key);
+
+  if (opening) {
+    document.querySelectorAll('.bus-stop.open').forEach((section) => {
+      syncBusStopOpen(section, false);
+    });
     expandedStops.clear();
     expandedStops.add(key);
+
     const etas = await fetchStopEtas(stop);
     stopEtas.set(key, etas);
+
+    const section = findStopSection(key);
+    updateStopEtaBody(section, etas);
+    syncBusStopOpen(section, true);
+
     const marker = markers.get(key);
     if (marker && stop.lat != null && stop.lng != null) {
       map?.setView([stop.lat, stop.lng], STOP_MAP_ZOOM, { animate: true });
@@ -1273,14 +1332,11 @@ async function toggleStop(stop, forceOpen = false) {
     }
   } else {
     expandedStops.delete(key);
+    syncBusStopOpen(findStopSection(key), false);
     markers.get(key)?.closeTooltip();
     clearBusLocationMarkers();
   }
-  const userPos = getUserPosition();
-  renderStops({
-    currentIdx: findCurrentStopIndex(),
-    closestIdx: findClosestStopIndex(userPos),
-  });
+
   updateBusLocationMarkers();
 }
 
@@ -1336,8 +1392,7 @@ function updateLiveMinutes() {
   document.querySelectorAll('.bus-stop.open').forEach((section) => {
     const key = section.dataset.stopKey;
     const etas = stopEtas.get(key) ?? [];
-    const body = section.querySelector('.bus-stop-body');
-    if (body) body.innerHTML = renderEtaList(etas);
+    updateStopEtaBody(section, etas);
   });
 }
 
