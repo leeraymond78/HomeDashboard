@@ -993,15 +993,20 @@ function syncExpandedMarkerTooltip() {
   if (key) markers.get(key)?.openTooltip();
 }
 
-function formatBusArrivalLabel(eta) {
-  if (eta.busAwaitingDepart || eta.remark === '発車待ち') return '発車待ち';
-  if (!eta.busStopName) return '走行中';
-  let label = `${eta.busStopName}へ到着`;
-  const stopsLeft = eta.busStopsLeft;
-  if (stopsLeft != null && stopsLeft > 0) {
-    label += `（あと${stopsLeft}駅）`;
+function formatBusArrivalLocation(eta) {
+  if (eta.busAwaitingDepart || eta.remark === '発車待ち') {
+    return { show: true, location: '発車待ち', stopsLeft: null };
   }
-  return label;
+  if (!eta.busStopName) return { show: false, location: null, stopsLeft: null };
+  const stopsLeft = eta.busStopsLeft != null && eta.busStopsLeft > 0 ? eta.busStopsLeft : null;
+  return { show: true, location: `${eta.busStopName}へ到着`, stopsLeft };
+}
+
+function formatBusArrivalLabel(eta) {
+  const { location, stopsLeft } = formatBusArrivalLocation(eta);
+  if (!location) return '走行中';
+  if (stopsLeft == null) return location;
+  return `${location} · ${stopsLeft}駅`;
 }
 
 function busLocationIcon(etaClass, index) {
@@ -1148,13 +1153,17 @@ function renderEtaList(etas) {
   if (!etas.length) {
     return '<div class="bus-stop-empty">情報なし</div>';
   }
-  return etas.map((eta) => `
+  return etas.map((eta) => {
+    const arrival = formatBusArrivalLocation(eta);
+    return `
     <div class="bus-eta-item ${eta.etaClass}">
       <span class="bus-eta-mins">${formatEtaMinsLabel(eta)}</span>
       ${eta.remark ? `<span class="bus-eta-remark">${escapeHtml(eta.remark)}</span>` : ''}
-      ${eta.busStopName || eta.busAwaitingDepart ? `<span class="bus-eta-location">${escapeHtml(formatBusArrivalLabel(eta))}</span>` : ''}
+      ${arrival.show ? `<span class="bus-eta-location">${escapeHtml(arrival.location ?? '走行中')}</span>` : ''}
+      ${arrival.stopsLeft != null ? `<span class="bus-eta-stops-left" title="あと${arrival.stopsLeft}駅">${arrival.stopsLeft}駅</span>` : ''}
       <span class="bus-eta-time">${escapeHtml(eta.time)}</span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderStops({ currentIdx, closestIdx }) {
