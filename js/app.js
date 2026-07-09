@@ -428,6 +428,34 @@ const ETA_TABLE_COLGROUP = `
     <col class="col-remark">
   </colgroup>`;
 
+function groupBodyInner(section) {
+  return section.querySelector('.group-body-inner');
+}
+
+function scheduleGroupBodyClear(index) {
+  const section = document.querySelector(`.group[data-index="${index}"]`);
+  if (!section) return;
+
+  const panel = section.querySelector('.group-body');
+  const inner = groupBodyInner(section);
+  if (!panel || !inner) {
+    inner?.replaceChildren();
+    return;
+  }
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    inner.replaceChildren();
+    return;
+  }
+
+  const onEnd = (e) => {
+    if (e.target !== panel || e.propertyName !== 'grid-template-rows') return;
+    panel.removeEventListener('transitionend', onEnd);
+    if (!config.groups[index]?.open) inner.replaceChildren();
+  };
+  panel.addEventListener('transitionend', onEnd);
+}
+
 function ensureEtaTable(body) {
   let table = body.querySelector('.eta-table');
   if (table) return table.querySelector('tbody');
@@ -489,7 +517,8 @@ function syncGroupBody(index) {
   const section = document.querySelector(`.group[data-index="${index}"]`);
   if (!section) return;
 
-  const body = section.querySelector('.group-body');
+  const body = groupBodyInner(section);
+  if (!body) return;
   const etas = groupEtas.get(index) ?? [];
   const state = groupState.get(index) ?? 'loading';
   const displayEtas = etas.slice(0, etasLimitForGroup(index));
@@ -542,7 +571,7 @@ function buildGroupsShell() {
             </svg>
           </span>
         </button>
-        <div class="group-body"></div>
+        <div class="group-body"><div class="group-body-inner"></div></div>
       </section>`)
     .join('');
 }
@@ -587,12 +616,17 @@ function updateGroup(index) {
     distEl.hidden = true;
   }
 
-  const body = section.querySelector('.group-body');
+  const inner = groupBodyInner(section);
+  if (!inner) return;
   if (!group.open) {
-    body.replaceChildren();
+    inner.toggleAttribute('inert', true);
+    inner.setAttribute('aria-hidden', 'true');
+    scheduleGroupBodyClear(index);
     return;
   }
 
+  inner.toggleAttribute('inert', false);
+  inner.setAttribute('aria-hidden', 'false');
   syncGroupBody(index);
 }
 

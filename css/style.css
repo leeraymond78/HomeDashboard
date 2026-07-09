@@ -222,11 +222,24 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 }
 
 .group-body {
-  display: none;
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s ease-out;
 }
 
 .group.open .group-body {
-  display: block;
+  grid-template-rows: 1fr;
+}
+
+.group-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group-body {
+    transition: none;
+  }
 }
 
 .show-more-btn {

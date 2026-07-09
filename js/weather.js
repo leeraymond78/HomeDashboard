@@ -358,6 +358,11 @@ function syncWeatherOpen(root) {
   root.classList.toggle('open', weatherExpanded);
   const header = root.querySelector('.weather-header');
   if (header) header.setAttribute('aria-expanded', String(weatherExpanded));
+  const inner = root.querySelector('.group-body-inner');
+  if (inner) {
+    inner.toggleAttribute('inert', !weatherExpanded);
+    inner.setAttribute('aria-hidden', String(!weatherExpanded));
+  }
 }
 
 function bindWeatherToggle(root) {
@@ -399,8 +404,10 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
         </span>
       </button>
       <div class="group-body weather-body">
-        <div class="weather-error error-msg">天氣資料暫時無法取得</div>
-        ${HKO_APP_LINK}
+        <div class="group-body-inner">
+          <div class="weather-error error-msg">天氣資料暫時無法取得</div>
+          ${HKO_APP_LINK}
+        </div>
       </div>`;
     bindWeatherToggle(root);
     syncWeatherOpen(root);
@@ -432,28 +439,30 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
     </button>
     <p class="weather-desc">${escapeHtml(vm.weatherDesc)}</p>
     <div class="group-body weather-body">
-      ${vm.dataNote ? `<p class="weather-note">${escapeHtml(vm.dataNote)}</p>` : ''}
-      <div class="weather-summary" role="list">
-        ${renderStat('相對濕度', vm.humidity)}
-        ${renderStat('降雨量', vm.rainfall)}
-      </div>
-      <div class="weather-details">
-        <div class="weather-detail-row">
-          <span class="weather-detail-label">今日最高／最低</span>
-          <span class="weather-detail-value">${escapeHtml(vm.todayHighLow)}</span>
+      <div class="group-body-inner">
+        ${vm.dataNote ? `<p class="weather-note">${escapeHtml(vm.dataNote)}</p>` : ''}
+        <div class="weather-summary" role="list">
+          ${renderStat('相對濕度', vm.humidity)}
+          ${renderStat('降雨量', vm.rainfall)}
         </div>
-        <div class="weather-detail-row">
-          <span class="weather-detail-label">明天</span>
-          <span class="weather-detail-value">${escapeHtml(vm.tomorrowSummary)}</span>
+        <div class="weather-details">
+          <div class="weather-detail-row">
+            <span class="weather-detail-label">今日最高／最低</span>
+            <span class="weather-detail-value">${escapeHtml(vm.todayHighLow)}</span>
+          </div>
+          <div class="weather-detail-row">
+            <span class="weather-detail-label">明天</span>
+            <span class="weather-detail-value">${escapeHtml(vm.tomorrowSummary)}</span>
+          </div>
+          ${vm.warnings.length || alertLines ? `
+          <div class="weather-warnings">
+            <div class="weather-detail-label">生效警告</div>
+            <div class="weather-warn-chips">${warnChips}</div>
+            ${alertLines ? `<ul class="weather-alert-list">${alertLines}</ul>` : ''}
+          </div>` : ''}
         </div>
-        ${vm.warnings.length || alertLines ? `
-        <div class="weather-warnings">
-          <div class="weather-detail-label">生效警告</div>
-          <div class="weather-warn-chips">${warnChips}</div>
-          ${alertLines ? `<ul class="weather-alert-list">${alertLines}</ul>` : ''}
-        </div>` : ''}
+        ${HKO_APP_LINK}
       </div>
-      ${HKO_APP_LINK}
     </div>`;
 
   bindWeatherToggle(root);
