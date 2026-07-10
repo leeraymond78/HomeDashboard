@@ -21,6 +21,8 @@ const BACKSPACE_ICON = `<svg width="22" height="22" viewBox="0 0 24 24" fill="cu
 </svg>`;
 
 const OPERATOR_LABEL = { kmb: '九巴', nwfb: '城巴', mtr: '港鐵', gmb: '小巴' };
+const SEARCH_STATE_KEY = 'homedashboard-route-search-state';
+const SEARCH_RESTORE_KEY = 'homedashboard-route-search-restore';
 const LOAD_LABEL = {
   cache: 'キャッシュから読み込み中…',
   kmb: '九巴データを読み込み中…',
@@ -42,6 +44,70 @@ let inputEl;
 let resultsEl;
 let alphaPadEl;
 let keyboardEl;
+/** @type {number} */
+let restoredScrollTop = 0;
+
+function readSearchState() {
+  try {
+    const raw = sessionStorage.getItem(SEARCH_STATE_KEY);
+    if (!raw) return null;
+    const state = JSON.parse(raw);
+    if (typeof state.query !== 'string') return null;
+    return {
+      query: state.query,
+      scrollTop: Number(state.scrollTop) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveSearchState() {
+  try {
+    sessionStorage.setItem(SEARCH_STATE_KEY, JSON.stringify({
+      query,
+      scrollTop: resultsEl?.scrollTop ?? 0,
+    }));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function markSearchForRestore() {
+  try {
+    sessionStorage.setItem(SEARCH_RESTORE_KEY, '1');
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function clearSearchState() {
+  try {
+    sessionStorage.removeItem(SEARCH_STATE_KEY);
+    sessionStorage.removeItem(SEARCH_RESTORE_KEY);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function consumeRestoreFlag() {
+  try {
+    const shouldRestore = sessionStorage.getItem(SEARCH_RESTORE_KEY) === '1';
+    sessionStorage.removeItem(SEARCH_RESTORE_KEY);
+    return shouldRestore;
+  } catch {
+    return false;
+  }
+}
+
+function restoreResultsScroll(scrollTop) {
+  if (!scrollTop || !resultsEl) return;
+  const apply = () => {
+    resultsEl.scrollTop = scrollTop;
+  };
+  apply();
+  requestAnimationFrame(apply);
+}
 
 function operatorLabel(type) {
   return OPERATOR_LABEL[type] ?? type;
@@ -61,6 +127,8 @@ function formatMatchOrig(match) {
 }
 
 function navigateToBus(routeStop) {
+  saveSearchState();
+  markSearchForRestore();
   const back = encodeURIComponent('search.html');
   window.location.href = `bus.html?${serializeRouteStop(routeStop)}&back=${back}`;
 }
@@ -151,6 +219,7 @@ async function runSearch() {
 
   if (!query) {
     renderResults([]);
+    saveSearchState();
     return;
   }
 
@@ -165,6 +234,8 @@ async function runSearch() {
   } catch {
     if (gen !== searchGeneration) return;
     renderResults(instant);
+  } finally {
+    saveSearchState();
   }
 }
 
@@ -253,7 +324,14 @@ async function loadIndex() {
     indexReady = isRouteSearchIndexReady();
     setKeyboardEnabled(true);
     renderInput();
-    renderResultsHint('番号を入力すると路線が表示されます');
+    if (query) {
+      const scrollTop = restoredScrollTop;
+      restoredScrollTop = 0;
+      await runSearch();
+      restoreResultsScroll(scrollTop);
+    } else {
+      renderResultsHint('番号を入力すると路線が表示されます');
+    }
   } catch {
     renderResultsHint('路線データの読み込みに失敗しました');
   } finally {
@@ -284,12 +362,30 @@ function bindViewportSync() {
   requestAnimationFrame(settle);
 }
 
+function bindHomeLink() {
+  const link = document.querySelector('.route-search-page .page-nav-link--back');
+  link?.addEventListener('click', clearSearchState);
+}
+
 function init() {
   inputEl = document.getElementById('route-search-input');
   resultsEl = document.getElementById('route-search-results');
   keyboardEl = document.getElementById('route-search-keyboard');
 
   if (!inputEl || !resultsEl || !keyboardEl) return;
+
+  if (consumeRestoreFlag()) {
+    const saved = readSearchState();
+    if (saved?.query) {
+      query = saved.query;
+      restoredScrollTop = saved.scrollTop;
+    }
+  } else {
+    clearSearchState();
+  }
+
+  bindHomeLink();
+  resultsEl.addEventListener('scroll', saveSearchState, { passive: true });
 
   bindViewportSync();
   buildKeyboard(keyboardEl);
