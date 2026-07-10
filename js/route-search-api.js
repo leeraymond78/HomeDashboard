@@ -11,6 +11,8 @@
  *   service_type?: number,
  *   dir?: string,
  *   stopId?: string,
+ *   nwfbSpecial?: boolean,
+ *   gmbSpecial?: boolean,
  *   realRouteId?: string | number,
  *   routeSeq?: number,
  *   region?: string,
@@ -19,9 +21,10 @@
 /** @typedef {{ phase: string, loaded: number, total: number }} RouteSearchProgress */
 
 const GMB_REGION_LABEL = { HKI: '香港島', KLN: '九龍', NT: '新界' };
-const CACHE_VERSION = 4;
-const CACHE_KEY = 'homedashboard-route-search-v4';
-const GMB_DETAIL_CACHE_KEY = 'homedashboard-route-search-gmb-v4';
+const CACHE_VERSION = 5;
+const CACHE_KEY = 'homedashboard-route-search-v5';
+const GMB_DETAIL_CACHE_KEY = 'homedashboard-route-search-gmb-v6';
+const NWFB_INTEGRATED_URL = 'https://transport-data.open-data.hk/integrated_routes.json';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GMB_DETAIL_MAX = 300;
 const GMB_ENRICH_LIMIT = 30;
@@ -61,11 +64,131 @@ function routeSortKey(routeId) {
   return routeId.toUpperCase();
 }
 
-function compareMatches(a, b) {
-  const typeOrder = { kmb: 0, nwfb: 1, mtr: 2, gmb: 3 };
-  const typeCmp = (typeOrder[a.type] ?? 9) - (typeOrder[b.type] ?? 9);
-  if (typeCmp !== 0) return typeCmp;
-  return routeSortKey(a.routeId).localeCompare(routeSortKey(b.routeId), undefined, { numeric: true });
+function matchRank(routeId, query) {
+  const id = routeSortKey(routeId);
+  const q = normalizeQuery(query);
+  if (!q) return Number.MAX_SAFE_INTEGER;
+  if (id === q) return 0;
+  if (id.startsWith(q)) return 1 + (id.length - q.length);
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function isMatchSpecial(match) {
+  if (match.type === 'kmb') return match.service_type != null && match.service_type !== 1;
+  if (match.type === 'nwfb') return Boolean(match.nwfbSpecial);
+  if (match.type === 'gmb') return Boolean(match.gmbSpecial);
+  return false;
+}
+
+function compareMatchesForQuery(query) {
+  return (a, b) => {
+    const rankCmp = matchRank(a.routeId, query) - matchRank(b.routeId, query);
+    if (rankCmp !== 0) return rankCmp;
+
+    const typeOrder = { kmb: 0, nwfb: 1, mtr: 2, gmb: 3 };
+    const typeCmp = (typeOrder[a.type] ?? 9) - (typeOrder[b.type] ?? 9);
+    if (typeCmp !== 0) return typeCmp;
+
+    const routeCmp = routeSortKey(a.routeId).localeCompare(routeSortKey(b.routeId), undefined, { numeric: true });
+    if (routeCmp !== 0) return routeCmp;
+
+    const specialCmp = Number(isMatchSpecial(a)) - Number(isMatchSpecial(b));
+    if (specialCmp !== 0) return specialCmp;
+
+    return String(a.dest ?? '').localeCompare(String(b.dest ?? ''), 'zh-Hant');
+  };
+}
+
+function nextRouteBranch(routeId, query) {
+  const id = routeSortKey(routeId);
+  const q = normalizeQuery(query);
+  if (!q || !id.startsWith(q) || id.length <= q.length) return '';
+  return id[q.length];
+}
+
+function sortRouteBranches(branches) {
+  return branches.sort((a, b) => {
+    const aLetter = /[A-Z]/.test(a);
+    const bLetter = /[A-Z]/.test(b);
+    if (aLetter !== bLetter) return aLetter ? -1 : 1;
+    return a.localeCompare(b, undefined, { numeric: true });
+  });
+}
+
+function diversifyBranchBucket(bucket) {
+  /** @type {Map<string, RouteSearchMatch[]>} */
+  const byRouteId = new Map();
+  for (const item of bucket) {
+    const key = routeSortKey(item.routeId);
+    if (!byRouteId.has(key)) byRouteId.set(key, []);
+    byRouteId.get(key).push(item);
+  }
+
+  const routeIds = [...byRouteId.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  /** @type {RouteSearchMatch[]} */
+  const diversified = [];
+  let round = 0;
+  while (diversified.length < bucket.length) {
+    let added = false;
+    for (const routeId of routeIds) {
+      const items = byRouteId.get(routeId);
+      if (!items || round >= items.length) continue;
+      diversified.push(items[round]);
+      added = true;
+    }
+    if (!added) break;
+    round += 1;
+  }
+  return diversified;
+}
+
+/**
+ * Keep short prefix searches representative across route branches (e.g. N -> NA*, N8).
+ * @param {RouteSearchMatch[]} results
+ * @param {string} query
+ * @param {number} [limit]
+ * @returns {RouteSearchMatch[]}
+ */
+function limitSearchResults(results, query, limit = 60) {
+  const compare = compareMatchesForQuery(query);
+  const sorted = [...results].sort(compare);
+  if (sorted.length <= limit) return sorted;
+
+  const q = normalizeQuery(query);
+  if (q.length > 2) return sorted.slice(0, limit);
+
+  /** @type {Map<string, RouteSearchMatch[]>} */
+  const byBranch = new Map();
+  for (const item of sorted) {
+    const branch = nextRouteBranch(item.routeId, q) || '_';
+    if (!byBranch.has(branch)) byBranch.set(branch, []);
+    byBranch.get(branch).push(item);
+  }
+
+  for (const [branch, bucket] of byBranch) {
+    byBranch.set(branch, diversifyBranchBucket(bucket));
+  }
+
+  if (byBranch.size <= 1) return sorted.slice(0, limit);
+
+  /** @type {RouteSearchMatch[]} */
+  const picked = [];
+  const branches = sortRouteBranches([...byBranch.keys()]);
+  let round = 0;
+  while (picked.length < limit) {
+    let added = false;
+    for (const branch of branches) {
+      const bucket = byBranch.get(branch);
+      if (!bucket || round >= bucket.length) continue;
+      picked.push(bucket[round]);
+      added = true;
+      if (picked.length >= limit) break;
+    }
+    if (!added) break;
+    round += 1;
+  }
+
+  return picked;
 }
 
 function rebuildRouteIdSet() {
@@ -93,12 +216,33 @@ async function loadKmbIndex() {
   }));
 }
 
-async function loadNwfbIndex() {
-  reportProgress('nwfb', 0, 1);
-  const res = await fetch('https://rt.data.gov.hk/v2/transport/citybus/route/CTB');
-  const json = await res.json();
-  reportProgress('nwfb', 1, 1);
-  return (json.data ?? []).map((item) => ({
+function isCtbIntegratedEntry(item) {
+  if (item.co?.includes('ctb')) return true;
+  if (item.operator_routes?.some((routeRef) => routeRef.startsWith('ctb|'))) return true;
+  if (String(item.stops_and_alignment ?? '').includes('ctb')) return true;
+  return false;
+}
+
+function dirFromIntegratedEntry(item) {
+  if (item.bound?.ctb) return item.bound.ctb;
+  const operatorRoute = item.operator_routes?.[0];
+  if (operatorRoute) return operatorRoute.split('|')[2] ?? 'O';
+  return 'O';
+}
+
+function normalizeStopLabel(name) {
+  return String(name ?? '').replace(/\s+/g, '').replace(/[(),（）]/g, '').toLowerCase();
+}
+
+function stopMatchesOrig(stopName, orig) {
+  const normalizedStop = normalizeStopLabel(stopName);
+  const normalizedOrig = normalizeStopLabel(orig);
+  if (!normalizedStop || !normalizedOrig) return false;
+  return normalizedStop.includes(normalizedOrig) || normalizedOrig.includes(normalizedStop);
+}
+
+function loadNwfbFromRouteList(items) {
+  return items.map((item) => ({
     type: 'nwfb',
     routeId: item.route,
     route: item.route,
@@ -107,6 +251,87 @@ async function loadNwfbIndex() {
     dest: item.dest_tc,
     label: `${item.route} 往${item.dest_tc}`,
   }));
+}
+
+function buildNwfbMatchesFromIntegrated(integrated, routeItems) {
+  /** @type {Map<string, { orig_tc: string, dest_tc: string }>} */
+  const routeMeta = new Map();
+  for (const item of routeItems) {
+    routeMeta.set(item.route.toUpperCase(), item);
+  }
+
+  /** @type {RouteSearchMatch[]} */
+  const matches = [];
+  /** @type {Set<string>} */
+  const seen = new Set();
+
+  for (const [, item] of Object.entries(integrated ?? {})) {
+    if (!isCtbIntegratedEntry(item)) continue;
+
+    const route = item.route ?? '';
+    if (!route) continue;
+
+    const meta = routeMeta.get(route.toUpperCase());
+    let dir = dirFromIntegratedEntry(item);
+    let orig = item.orig?.tc ?? '';
+    let dest = item.dest?.tc ?? '';
+    const nwfbSpecial = item.serviceType === 1 && Boolean(orig);
+
+    if (nwfbSpecial && meta && normalizeStopLabel(dest) === normalizeStopLabel(meta.orig_tc)) {
+      dir = 'I';
+    }
+
+    if (!orig || !dest) {
+      if (!meta) continue;
+      if (dir === 'I') {
+        orig = meta.dest_tc;
+        dest = meta.orig_tc;
+      } else {
+        orig = meta.orig_tc;
+        dest = meta.dest_tc;
+      }
+    }
+
+    const dedupeKey = `${route}:${dir}:${orig}:${dest}:${nwfbSpecial ? 1 : 0}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    matches.push({
+      type: 'nwfb',
+      routeId: route,
+      route,
+      dir,
+      orig,
+      dest,
+      nwfbSpecial,
+      label: `${route} 往${dest}`,
+    });
+  }
+
+  return matches;
+}
+
+async function loadNwfbIndex() {
+  reportProgress('nwfb', 0, 2);
+  const routeRes = await fetch('https://rt.data.gov.hk/v2/transport/citybus/route/CTB');
+  const routeJson = await routeRes.json();
+  const routeItems = routeJson.data ?? [];
+  reportProgress('nwfb', 1, 2);
+
+  try {
+    const integratedRes = await fetch(NWFB_INTEGRATED_URL);
+    const integrated = await integratedRes.json();
+    const matches = buildNwfbMatchesFromIntegrated(integrated, routeItems);
+    if (matches.length) {
+      reportProgress('nwfb', 2, 2);
+      return matches;
+    }
+  } catch {
+    /* fall back to route list only */
+  }
+
+  reportProgress('nwfb', 2, 2);
+  return loadNwfbFromRouteList(routeItems);
 }
 
 async function loadMtrIndex() {
@@ -161,6 +386,14 @@ async function loadGmbFlatList() {
   return flat;
 }
 
+function isGmbSpecialRoute(routeData) {
+  const tc = String(routeData.description_tc ?? '').trim();
+  const en = String(routeData.description_en ?? '').trim();
+  if (tc.includes('正常')) return false;
+  if (tc.includes('特別')) return true;
+  return /special/i.test(en) && !/normal/i.test(en);
+}
+
 /**
  * @param {{ region: string, routeCode: string }} item
  * @returns {Promise<RouteSearchMatch[]>}
@@ -175,6 +408,7 @@ async function fetchGmbRouteEntries({ region, routeCode }) {
     /** @type {RouteSearchMatch[]} */
     const entries = [];
     for (const routeData of json.data ?? []) {
+      const gmbSpecial = isGmbSpecialRoute(routeData);
       for (const dir of routeData.directions ?? []) {
         entries.push({
           type: 'gmb',
@@ -184,6 +418,7 @@ async function fetchGmbRouteEntries({ region, routeCode }) {
           region,
           orig: dir.orig_tc,
           dest: dir.dest_tc,
+          gmbSpecial,
           label: `${routeCode} 往${dir.dest_tc}`,
         });
       }
@@ -370,6 +605,15 @@ export function getAlphabetCandidates(query) {
   if (!allRouteIds) return [];
   const q = normalizeQuery(query);
   const letters = new Set();
+
+  if (!q) {
+    for (const routeId of allRouteIds) {
+      const first = routeId[0];
+      if (/[A-Z]/.test(first)) letters.add(first);
+    }
+    return [...letters].sort();
+  }
+
   for (const routeId of allRouteIds) {
     if (!routeId.startsWith(q)) continue;
     if (routeId.length <= q.length) continue;
@@ -420,8 +664,58 @@ export function searchRoutesInstant(query) {
     }
   }
 
-  results.sort(compareMatches);
-  return results.slice(0, 60);
+  return limitSearchResults(results, q);
+}
+
+/**
+ * Refine inbound Citybus origin labels using route-stop data.
+ * @param {RouteSearchMatch[]} instant
+ * @returns {Promise<RouteSearchMatch[]>}
+ */
+export async function enrichNwfbResults(instant) {
+  const routesToRefine = [...new Set(
+    instant
+      .filter((item) => item.type === 'nwfb' && item.dir === 'I' && !item.nwfbSpecial)
+      .map((item) => item.route),
+  )].slice(0, GMB_ENRICH_LIMIT);
+
+  if (!routesToRefine.length) return instant;
+
+  /** @type {Map<string, string>} */
+  const refinedOrigins = new Map();
+  await Promise.all(routesToRefine.map(async (route) => {
+    try {
+      const [inboundRes, outboundRes] = await Promise.all([
+        fetch(`https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/route-stop/CTB/${route}/inbound`),
+        fetch(`https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/route-stop/CTB/${route}/outbound`),
+      ]);
+      const inboundItems = (await inboundRes.json()).data ?? [];
+      const outboundItems = (await outboundRes.json()).data ?? [];
+      if (!inboundItems.length || !outboundItems.length) return;
+
+      outboundItems.sort((a, b) => parseInt(a.seq, 10) - parseInt(b.seq, 10));
+      inboundItems.sort((a, b) => parseInt(a.seq, 10) - parseInt(b.seq, 10));
+      const terminalStopId = outboundItems[outboundItems.length - 1]?.stop;
+      const startItem = inboundItems.find((item) => item.stop === terminalStopId) ?? inboundItems[0];
+      if (!startItem) return;
+
+      const stopRes = await fetch(`https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/stop/${startItem.stop}`);
+      const stopJson = await stopRes.json();
+      const name = stopJson.data?.name_tc;
+      if (name) refinedOrigins.set(route, name);
+    } catch {
+      /* keep placeholder origin */
+    }
+  }));
+
+  if (!refinedOrigins.size) return instant;
+
+  return instant.map((item) => {
+    if (item.type !== 'nwfb' || item.dir !== 'I' || item.nwfbSpecial || !item.route) return item;
+    const orig = refinedOrigins.get(item.route);
+    if (!orig) return item;
+    return { ...item, orig, label: `${item.routeId} 往${item.dest}` };
+  });
 }
 
 /**
@@ -444,8 +738,7 @@ export async function enrichGmbResults(query, instant) {
   const enriched = await enrichGmbMatches(toEnrich);
   const nonGmb = instant.filter((item) => item.type !== 'gmb');
   const merged = [...nonGmb, ...enriched];
-  merged.sort(compareMatches);
-  return merged.slice(0, 60);
+  return limitSearchResults(merged, q);
 }
 
 /**
@@ -454,7 +747,8 @@ export async function enrichGmbResults(query, instant) {
  */
 export async function searchRoutes(query) {
   const instant = searchRoutesInstant(query);
-  return enrichGmbResults(query, instant);
+  const withNwfb = await enrichNwfbResults(instant);
+  return enrichGmbResults(query, withNwfb);
 }
 
 /**
@@ -486,13 +780,24 @@ export async function resolveRouteStop(match) {
         `https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/route-stop/CTB/${match.route}/${dir}`,
       );
       const json = await res.json();
-      const first = json.data?.[0];
-      if (!first) throw new Error('停留所が見つかりません');
+      const items = (json.data ?? []).sort((a, b) => parseInt(a.seq, 10) - parseInt(b.seq, 10));
+      if (!items.length) throw new Error('停留所が見つかりません');
+
+      let selected = items[0];
+      if (match.nwfbSpecial && match.orig) {
+        const stopDetails = await Promise.all(items.map(async (item) => {
+          const detailRes = await fetch(`https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/stop/${item.stop}`);
+          const detailJson = await detailRes.json();
+          return { item, name: detailJson.data?.name_tc ?? '' };
+        }));
+        selected = stopDetails.find(({ name }) => stopMatchesOrig(name, match.orig))?.item ?? selected;
+      }
+
       return {
         type: 'nwfb',
         route: match.route,
-        dir: first.dir ?? match.dir ?? 'O',
-        stop: first.stop,
+        dir: selected.dir ?? match.dir ?? 'O',
+        stop: selected.stop,
       };
     }
     case 'mtr': {

@@ -3,6 +3,7 @@ import { operatorClass, serializeRouteStop } from './transit-api.js';
 import {
   ensureRouteSearchIndex,
   enrichGmbResults,
+  enrichNwfbResults,
   getAlphabetCandidates,
   isRouteSearchIndexReady,
   resolveRouteStop,
@@ -119,7 +120,10 @@ function formatMatchDest(match) {
 }
 
 function isSpecialService(match) {
-  return match.type === 'kmb' && match.service_type != null && match.service_type !== 1;
+  if (match.type === 'kmb') return match.service_type != null && match.service_type !== 1;
+  if (match.type === 'nwfb') return Boolean(match.nwfbSpecial);
+  if (match.type === 'gmb') return Boolean(match.gmbSpecial);
+  return false;
 }
 
 function formatMatchOrig(match) {
@@ -228,7 +232,8 @@ async function runSearch() {
   renderResults(instant);
 
   try {
-    const matches = await enrichGmbResults(query, instant);
+    const withNwfb = await enrichNwfbResults(instant);
+    const matches = await enrichGmbResults(query, withNwfb);
     if (gen !== searchGeneration) return;
     renderResults(matches);
   } catch {
