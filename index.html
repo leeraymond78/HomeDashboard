@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="バス・小巴・接駁・天気。ゴールドコースト周辺の出かけ情報">
   <meta name="theme-color" content="#000000">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('homedashboard-theme');
+        if (t === 'lcd' || t === 'dark') {
+          document.documentElement.dataset.theme = t;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.content = t === 'lcd' ? '#b8c4ae' : '#000000';
+        }
+      } catch (e) {}
+    })();
+  </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="ゴールドコースト">
@@ -33,6 +45,7 @@
   </div>
 
   <footer class="refresh-bar">
+    <button id="theme-btn" type="button" class="theme-btn" aria-pressed="false">LCD</button>
     <span id="refresh-timer" class="refresh-timer">0s</span>
     <button id="refresh-btn" class="refresh-btn" type="button" aria-label="更新">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

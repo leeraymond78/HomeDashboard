@@ -1,5 +1,5 @@
 /* HomeDashboard service worker — app shell + runtime CDN cache. */
-const SHELL_VERSION = 'v16';
+const SHELL_VERSION = 'v19';
 const SHELL_CACHE = `home-dashboard-shell-${SHELL_VERSION}`;
 const RUNTIME_CACHE = `home-dashboard-runtime-${SHELL_VERSION}`;
 
@@ -22,6 +22,7 @@ const SHELL_ASSETS = [
   'js/route-search.js',
   'js/route-search-api.js',
   'js/route-fare-db.js',
+  'js/theme.js',
   'js/register-sw.js',
   'icons/icon-192.png',
   'icons/icon-512.png',

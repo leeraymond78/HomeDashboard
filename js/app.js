@@ -2,6 +2,7 @@ import { loadWeatherSection, startWeatherRefresh } from './weather.js';
 import { distanceM, formatDistance, bootstrapLocation, geolocationBlockReason, getLastGeoError, getUserPosition, requestUserPosition } from './location.js';
 import { escapeHtml } from './utils.js';
 import { initPullToRefresh } from './pull-to-refresh.js';
+import { initDashboardThemeToggle } from './theme.js';
 import { ensureRouteSearchIndex } from './route-search-api.js';
 import { ensureRouteFareDb, getFareStop } from './route-fare-db.js';
 import {
@@ -809,6 +810,7 @@ async function loadBuildStamp() {
 }
 
 async function init() {
+  initDashboardThemeToggle();
   loadBuildStamp();
   try {
     await loadConfig();

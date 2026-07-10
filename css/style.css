@@ -13,6 +13,14 @@
 }
 
 :root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --app-max-width: 550px;
+}
+
+html[data-theme="dark"],
+html:not([data-theme]) {
+  color-scheme: dark;
   --bg: #000;
   --white: #fff;
   --white-70: rgba(255, 255, 255, 0.7);
@@ -28,15 +36,130 @@
   --error: #ff0000;
   --eta-normal: #ffff80;
   --dest: #f67f02;
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --app-max-width: 550px;
+  --badge-fg: #000;
+  --badge-kmb-express: rgba(255, 0, 0, 0.63);
+  --badge-kmb-local: rgba(0, 0, 255, 0.63);
+  --badge-mtr: rgba(0, 0, 255, 0.63);
+  --badge-gmb: rgba(0, 255, 0, 0.63);
+  --badge-socif: rgba(0, 212, 255, 0.63);
+  --badge-nwfb: rgba(255, 255, 0, 0.63);
+  --badge-airport: rgba(246, 127, 2, 0.63);
+  --loc-prompt-bg: rgba(30, 100, 255, 0.12);
+  --loc-prompt-border: rgba(30, 100, 255, 0.45);
+  --loc-prompt-btn-bg: rgba(30, 100, 255, 0.2);
+  --loc-prompt-btn-bg-active: rgba(30, 100, 255, 0.32);
+  --on-accent: #fff;
+  --stop-current-fill: #1e64ff;
+  --stop-current-edge: #4d9fff;
+  --stop-current-row-bg: rgba(30, 100, 255, 0.15);
+  --stop-proximity-fill: #00a040;
+  --stop-proximity-edge: #4dff80;
+  --stop-proximity-row-bg: rgba(0, 200, 80, 0.1);
+  --stop-proximity-row-bg-soft: rgba(0, 200, 80, 0.08);
+  --marker-default-fill: rgba(80, 80, 80, 0.9);
+  --marker-default-edge: rgba(255, 255, 255, 0.5);
+  --stop-num-default-fill: rgba(255, 255, 255, 0.12);
+  --stop-num-default-edge: rgba(255, 255, 255, 0.35);
+  --tooltip-bg: rgba(0, 0, 0, 0.85);
+  --tooltip-fg: #fff;
+  --tooltip-arrow: rgba(0, 0, 0, 0.85);
+  --chip-on-dark-bg: rgba(0, 0, 0, 0.82);
+  --map-control-bg: rgba(0, 0, 0, 0.72);
+  --map-control-fg: #fff;
+}
+
+html[data-theme="lcd"] {
+  color-scheme: light;
+  --bg-base: #b8c4ae;
+  --bg: transparent;
+  --white: #1c261a;
+  --white-70: #2a3528;
+  --white-54: #3f4a3c;
+  --white-38: #5a6456;
+  --border: rgba(28, 38, 26, 0.32);
+  --kmb: #8f1818;
+  --mtr: #1a4090;
+  --gmb: #0f6020;
+  --nwfb: #5c5600;
+  --socif: #0a5870;
+  --scheduled: #1a4080;
+  --error: #7a2020;
+  --eta-normal: #1a4a28;
+  --dest: #5a4018;
+  --badge-fg: #1c261a;
+  --badge-kmb-express: rgba(120, 28, 28, 0.4);
+  --badge-kmb-local: rgba(26, 64, 144, 0.35);
+  --badge-mtr: rgba(26, 64, 144, 0.35);
+  --badge-gmb: rgba(15, 96, 32, 0.38);
+  --badge-socif: rgba(10, 88, 112, 0.35);
+  --badge-nwfb: rgba(92, 86, 0, 0.38);
+  --badge-airport: rgba(90, 64, 24, 0.42);
+  --loc-prompt-bg: rgba(40, 72, 48, 0.18);
+  --loc-prompt-border: rgba(40, 72, 48, 0.5);
+  --loc-prompt-btn-bg: rgba(50, 80, 55, 0.22);
+  --loc-prompt-btn-bg-active: rgba(50, 80, 55, 0.34);
+  --on-accent: #e8f0e2;
+  --stop-current-fill: #1a4080;
+  --stop-current-edge: #0c2860;
+  --stop-current-row-bg: rgba(26, 64, 128, 0.2);
+  --stop-proximity-fill: #0f6020;
+  --stop-proximity-edge: #084018;
+  --stop-proximity-row-bg: rgba(15, 96, 32, 0.16);
+  --stop-proximity-row-bg-soft: rgba(15, 96, 32, 0.1);
+  --marker-default-fill: #d0dbc8;
+  --marker-default-edge: #2e3c2c;
+  --stop-num-default-fill: rgba(255, 255, 255, 0.42);
+  --stop-num-default-edge: rgba(28, 38, 26, 0.5);
+  --tooltip-bg: rgba(228, 236, 222, 0.96);
+  --tooltip-fg: #1c261a;
+  --tooltip-arrow: rgba(228, 236, 222, 0.96);
+  --chip-on-dark-bg: #1c261a;
+  --map-control-bg: rgba(28, 38, 26, 0.78);
+  --map-control-fg: #e8f0e2;
 }
 
 html {
   -webkit-text-size-adjust: 100%;
   /* Disable double-tap zoom while preserving pinch-to-zoom */
   touch-action: manipulation;
+}
+
+html[data-theme="lcd"] {
+  min-height: 100%;
+  background-color: var(--bg-base);
+}
+
+html[data-theme="lcd"]::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--bg-base);
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.03) 0,
+      rgba(0, 0, 0, 0.03) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.024) 0,
+      rgba(0, 0, 0, 0.024) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      88.5deg,
+      rgba(0, 0, 0, 0.014) 0,
+      rgba(0, 0, 0, 0.014) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.05);
+  pointer-events: none;
 }
 
 body {
@@ -136,15 +259,15 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 .location-prompt {
   border-bottom: 1px solid var(--border);
   padding: 0.65rem 1rem;
-  background: rgba(30, 100, 255, 0.12);
+  background: var(--loc-prompt-bg);
 }
 
 .location-prompt-btn {
   width: 100%;
-  border: 1px solid rgba(30, 100, 255, 0.45);
+  border: 1px solid var(--loc-prompt-border);
   border-radius: 8px;
   padding: 0.7rem 0.85rem;
-  background: rgba(30, 100, 255, 0.2);
+  background: var(--loc-prompt-btn-bg);
   color: var(--white);
   font-family: inherit;
   font-size: 16px;
@@ -154,7 +277,7 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 }
 
 .location-prompt-btn:active {
-  background: rgba(30, 100, 255, 0.32);
+  background: var(--loc-prompt-btn-bg-active);
 }
 
 .location-prompt-btn:disabled {
@@ -299,7 +422,7 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #000;
+  color: var(--badge-fg);
   line-height: 1.15;
 }
 
@@ -370,13 +493,13 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 .color-nwfb { color: var(--nwfb); }
 .color-socif { color: var(--socif); }
 
-.bg-kmb-express { background: rgba(255, 0, 0, 0.63); }
-.bg-kmb-local { background: rgba(0, 0, 255, 0.63); }
-.bg-mtr { background: rgba(0, 0, 255, 0.63); }
-.bg-gmb { background: rgba(0, 255, 0, 0.63); }
-.bg-socif { background: rgba(0, 212, 255, 0.63); }
-.bg-nwfb { background: rgba(255, 255, 0, 0.63); }
-.bg-airport { background: rgba(246, 127, 2, 0.63); }
+.bg-kmb-express { background: var(--badge-kmb-express); }
+.bg-kmb-local { background: var(--badge-kmb-local); }
+.bg-mtr { background: var(--badge-mtr); }
+.bg-gmb { background: var(--badge-gmb); }
+.bg-socif { background: var(--badge-socif); }
+.bg-nwfb { background: var(--badge-nwfb); }
+.bg-airport { background: var(--badge-airport); }
 
 .eta-scheduled { color: var(--scheduled); }
 .eta-error { color: var(--error); }
@@ -442,6 +565,35 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 
 .refresh-btn:active {
   color: var(--white-70);
+}
+
+.theme-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--white-54);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.theme-btn:active {
+  color: var(--white-70);
+  background: rgba(127, 127, 127, 0.12);
+}
+
+html[data-theme="lcd"] .theme-btn {
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .refresh-btn.spinning svg {
@@ -624,6 +776,10 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   background: rgba(255, 255, 255, 0.06);
 }
 
+html[data-theme="lcd"] .eta-row-clickable:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 /* Bus route detail page — content fills to screen bottom; safe area is scroll padding only */
 .bus-detail-page {
   display: flex;
@@ -706,8 +862,8 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.72);
-  color: var(--white);
+  background: var(--map-control-bg);
+  color: var(--map-control-fg);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -754,15 +910,15 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 }
 
 .bus-stop-current {
-  background: rgba(30, 100, 255, 0.15);
+  background: var(--stop-current-row-bg);
 }
 
 .bus-stop-closest {
-  background: rgba(0, 200, 80, 0.1);
+  background: var(--stop-proximity-row-bg);
 }
 
 .bus-stop-next:not(.bus-stop-closest) {
-  background: rgba(0, 200, 80, 0.08);
+  background: var(--stop-proximity-row-bg-soft);
 }
 
 .bus-stop-header {
@@ -788,24 +944,24 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid var(--stop-num-default-edge);
+  background: var(--stop-num-default-fill);
   font-size: 14px;
   font-weight: bold;
   color: var(--white-70);
 }
 
 .bus-stop-num-current {
-  border-color: #4d9fff;
-  background: var(--scheduled);
-  color: var(--white);
+  border-color: var(--stop-current-edge);
+  background: var(--stop-current-fill);
+  color: var(--on-accent);
 }
 
 .bus-stop-num-closest,
 .bus-stop-num-next {
-  border-color: #4dff80;
-  background: #00a040;
-  color: var(--white);
+  border-color: var(--stop-proximity-edge);
+  background: var(--stop-proximity-fill);
+  color: var(--on-accent);
 }
 
 .bus-stop-info {
@@ -825,16 +981,16 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   border-radius: 4px;
   font-size: 10px;
   font-weight: bold;
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 .bus-stop-badge-current {
-  background: var(--scheduled);
+  background: var(--stop-current-fill);
 }
 
 .bus-stop-badge-closest,
 .bus-stop-badge-next {
-  background: #00a040;
+  background: var(--stop-proximity-fill);
 }
 
 .bus-stop-name {
@@ -1107,13 +1263,13 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 }
 
 .bus-eta-item.eta-scheduled .bus-eta-mins {
-  background: var(--scheduled);
-  color: var(--white);
+  background: var(--stop-current-fill);
+  color: var(--on-accent);
 }
 
 .bus-eta-item.eta-error .bus-eta-mins {
   background: var(--error);
-  color: var(--white);
+  color: var(--on-accent);
 }
 
 .bus-eta-remark {
@@ -1206,9 +1362,9 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   height: 14px;
   padding: 0 3px;
   border-radius: 7px;
-  border: 1.5px solid var(--white);
-  background: rgba(0, 0, 0, 0.82);
-  color: var(--white);
+  border: 1.5px solid var(--on-accent);
+  background: var(--chip-on-dark-bg);
+  color: var(--on-accent);
   font-family: 'Hibiya24', serif;
   font-size: 9px;
   font-weight: bold;
@@ -1228,8 +1384,8 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.5);
-  background: rgba(80, 80, 80, 0.9);
+  border: 2px solid var(--marker-default-edge);
+  background: var(--marker-default-fill);
   color: var(--white);
   font-family: 'Hibiya24', serif;
   font-size: 12px;
@@ -1237,21 +1393,29 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
+html[data-theme="lcd"] .bus-marker {
+  box-shadow:
+    0 1px 3px rgba(28, 38, 26, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
 .bus-marker-current {
-  border-color: #4d9fff;
-  background: var(--scheduled);
+  border-color: var(--stop-current-edge);
+  background: var(--stop-current-fill);
+  color: var(--on-accent);
 }
 
 .bus-marker-closest {
-  border-color: #4dff80;
-  background: #00a040;
+  border-color: var(--stop-proximity-edge);
+  background: var(--stop-proximity-fill);
+  color: var(--on-accent);
 }
 
 .leaflet-tooltip {
   font-family: 'Hibiya24', serif;
   font-size: 13px;
-  background: rgba(0, 0, 0, 0.85);
-  color: var(--white);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-fg);
   border: 1px solid var(--border);
   border-radius: 4px;
 }
@@ -1261,7 +1425,7 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 }
 
 .bus-map .bus-stop-tooltip.leaflet-tooltip-top:before {
-  border-top-color: rgba(0, 0, 0, 0.85);
+  border-top-color: var(--tooltip-arrow);
 }
 
 .route-search-bar {
@@ -1533,6 +1697,21 @@ body.route-search-page {
 
 .route-search-key:active {
   background: #2a2a2a;
+}
+
+html[data-theme="lcd"] .route-search-keyboard,
+html[data-theme="lcd"] .route-search-keyboard-alpha,
+html[data-theme="lcd"] .route-search-keyboard-alpha--empty,
+html[data-theme="lcd"] .route-search-key {
+  background: transparent;
+}
+
+html[data-theme="lcd"] .route-search-keyboard-num .route-search-key:nth-last-child(-n+3) {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+html[data-theme="lcd"] .route-search-key:active {
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .route-search-keyboard--disabled {
