@@ -1,4 +1,4 @@
-import { distanceM, geolocationBlockReason, getUserPosition, requestUserPosition } from './location.js';
+import { distanceM, bootstrapLocation, geolocationBlockReason, getUserPosition, requestUserPosition } from './location.js';
 import { escapeAttr, escapeHtml } from './utils.js';
 import {
   clearRouteWideEtaCache,
@@ -65,6 +65,10 @@ let matchedHeadwayVariant = null;
 let timetableVisible = false;
 let headwayLoadPromise = null;
 
+function preferNearestAnchor() {
+  return new URLSearchParams(window.location.search).get('nearest') === '1';
+}
+
 function stopMatchesConfigured(stop) {
   if (!routeStop) return false;
   if (routeStop.type === 'socif') return stop.seq === routeStop.stopSeq;
@@ -73,6 +77,10 @@ function stopMatchesConfigured(stop) {
 }
 
 function findCurrentStopIndex() {
+  if (preferNearestAnchor()) {
+    const closest = findClosestStopIndex(getUserPosition());
+    if (closest >= 0) return closest;
+  }
   const idx = routeStops.findIndex((s) => stopMatchesConfigured(s));
   return idx >= 0 ? idx : 0;
 }
@@ -91,6 +99,27 @@ function findClosestStopIndex(userPos) {
     }
   });
   return bestIdx;
+}
+
+async function applyNearestAnchorView({ loadEtas = false } = {}) {
+  if (!preferNearestAnchor() || !routeStops.length) return;
+  const currentIdx = findCurrentStopIndex();
+  const closestIdx = findClosestStopIndex(getUserPosition());
+  const configured = routeStops[currentIdx];
+  if (configured) {
+    expandedStops.clear();
+    expandedStops.add(stopKey(configured));
+  }
+  updateMap({ currentIdx, closestIdx });
+  renderStops({ currentIdx, closestIdx });
+  updateBusLocationMarkers();
+  if (!loadEtas || !configured) return;
+  const key = stopKey(configured);
+  if (stopEtas.has(key)) return;
+  const etas = await fetchStopEtas(configured);
+  stopEtas.set(key, etas);
+  renderStops({ currentIdx, closestIdx });
+  updateBusLocationMarkers();
 }
 
 function stopKey(stop) {
@@ -885,7 +914,10 @@ async function flipBound() {
     const params = serializeRouteStop(reversed);
     const currentParams = new URLSearchParams(window.location.search);
     const back = currentParams.get('back');
-    window.location.href = `bus.html?${params}${back ? `&back=${encodeURIComponent(back)}` : ''}`;
+    let href = `bus.html?${params}`;
+    if (back) href += `&back=${encodeURIComponent(back)}`;
+    if (preferNearestAnchor()) href += '&nearest=1';
+    window.location.href = href;
   } finally {
     btn.disabled = false;
   }
@@ -1452,11 +1484,15 @@ async function init() {
   bindLocateButton();
   window.addEventListener('userposition', (event) => {
     setUserMapMarker(/** @type {CustomEvent<GeolocationPosition>} */ (event).detail);
+    void applyNearestAnchorView({ loadEtas: true });
   });
 
   void initFlipBoundButton();
 
   try {
+    if (preferNearestAnchor()) {
+      await bootstrapLocation();
+    }
     routeStops = await fetchRouteStops(routeStop);
     const title = routeTitleHint(routeStop) || await routeTitle(routeStop, routeStops);
     document.getElementById('bus-title').textContent = title;

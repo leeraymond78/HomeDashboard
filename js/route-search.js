@@ -128,7 +128,7 @@ function navigateToBus(routeStop) {
   saveSearchState();
   markSearchForRestore();
   const back = encodeURIComponent('search.html');
-  window.location.href = `bus.html?${serializeRouteStop(routeStop)}&back=${back}`;
+  window.location.href = `bus.html?${serializeRouteStop(routeStop)}&nearest=1&back=${back}`;
 }
 
 function setKeyboardEnabled(enabled) {
