@@ -51,3 +51,7 @@ This repo deploys with GitHub Actions (`.github/workflows/deploy.yml`).
 3. Push to `main`. On the first run, approve the `github-pages` environment if prompted.
 
 Static files are served from the repository root. The included `.nojekyll` file disables Jekyll processing.
+
+## Acknowledgements
+
+This app uses bus route, fare, and stop data from **HK Bus Crawling@2021**: https://github.com/hkbus/hk-bus-crawling
