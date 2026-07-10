@@ -940,6 +940,32 @@ async function initFlipBoundButton() {
   });
 }
 
+function syncBusDetailTopInset() {
+  const top = document.querySelector('.bus-detail-top');
+  if (!top || !document.body.classList.contains('bus-detail-page')) return;
+  document.body.style.setProperty('--bus-detail-top-height', `${top.offsetHeight}px`);
+}
+
+function scrollStopIntoView(el, { smooth = false } = {}) {
+  if (!el) return;
+  syncBusDetailTopInset();
+  el.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'instant' });
+}
+
+function bindBusDetailTopInsetSync() {
+  const top = document.querySelector('.bus-detail-top');
+  if (!top || top.dataset.insetBound) return;
+  top.dataset.insetBound = '1';
+  const sync = () => syncBusDetailTopInset();
+  window.addEventListener('resize', sync);
+  window.addEventListener('orientationchange', sync);
+  window.visualViewport?.addEventListener('resize', sync);
+  if (window.ResizeObserver) {
+    new ResizeObserver(sync).observe(top);
+  }
+  sync();
+}
+
 function initMap() {
   if (map) return;
   const container = document.getElementById('bus-map');
@@ -959,7 +985,10 @@ function initMap() {
     maxNativeZoom: 20,
   }).addTo(map);
 
-  const syncMapSize = () => map?.invalidateSize();
+  const syncMapSize = () => {
+    map?.invalidateSize();
+    syncBusDetailTopInset();
+  };
   window.addEventListener('resize', syncMapSize);
   if (window.ResizeObserver && container) {
     new ResizeObserver(syncMapSize).observe(container);
@@ -1157,7 +1186,7 @@ function updateMap({ currentIdx, closestIdx }) {
       .addTo(map);
     marker.on('click', () => {
       const el = document.querySelector(`[data-stop-key="${stopKey(stop)}"]`);
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      scrollStopIntoView(el, { smooth: true });
       toggleStop(stop, true);
     });
     markers.set(stopKey(stop), marker);
@@ -1481,6 +1510,7 @@ async function init() {
   if (titleHint) document.getElementById('bus-title').textContent = titleHint;
 
   initMap();
+  bindBusDetailTopInsetSync();
   bindLocateButton();
   window.addEventListener('userposition', (event) => {
     setUserMapMarker(/** @type {CustomEvent<GeolocationPosition>} */ (event).detail);
@@ -1513,7 +1543,8 @@ async function init() {
       map?.invalidateSize();
       updateMap({ currentIdx, closestIdx });
       updateBusLocationMarkers();
-      document.querySelector('.bus-stop-current')?.scrollIntoView({ block: 'center' });
+      syncBusDetailTopInset();
+      scrollStopIntoView(document.querySelector('.bus-stop-current'));
     });
 
     startRefreshTimer();

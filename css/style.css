@@ -783,6 +783,11 @@ html[data-theme="lcd"] .eta-row-clickable:active {
 /* Bus route detail page — document scroll + sticky header/map (index safe-area model) */
 body.bus-detail-page {
   padding-top: 0;
+  --bus-detail-top-height: 0px;
+}
+
+.bus-detail-page .bus-stop {
+  scroll-margin-top: calc(var(--bus-detail-top-height) + 0.5rem);
 }
 
 .bus-detail-top {

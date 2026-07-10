@@ -1,5 +1,5 @@
 /* HomeDashboard service worker — app shell + runtime CDN cache. */
-const SHELL_VERSION = 'v23';
+const SHELL_VERSION = 'v24';
 const SHELL_CACHE = `home-dashboard-shell-${SHELL_VERSION}`;
 const RUNTIME_CACHE = `home-dashboard-runtime-${SHELL_VERSION}`;
 
