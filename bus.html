@@ -27,7 +27,8 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="bus-detail-page">
-  <header class="bus-detail-header">
+  <div class="bus-detail-top">
+    <header class="bus-detail-header">
     <nav class="page-nav page-nav--back bus-detail-nav">
       <a id="back-link" class="page-nav-link page-nav-link--back" href="./">
         <svg class="page-nav-back-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -45,16 +46,17 @@
       </div>
     </nav>
     <h1 id="bus-title" class="bus-detail-title">読み込み中…</h1>
-  </header>
+    </header>
 
-  <div class="bus-map-wrap">
+    <div class="bus-map-wrap">
     <div id="bus-map" class="bus-map" aria-hidden="true"></div>
     <button id="bus-locate-btn" class="bus-map-locate-btn" type="button" aria-label="現在地" title="現在地" hidden>
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <circle cx="12" cy="12" r="3"/>
         <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
       </svg>
-    </button>
+      </button>
+    </div>
   </div>
 
   <main id="bus-stops" class="bus-stops" aria-live="polite">

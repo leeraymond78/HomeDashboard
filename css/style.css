@@ -780,19 +780,25 @@ html[data-theme="lcd"] .eta-row-clickable:active {
   background: rgba(0, 0, 0, 0.06);
 }
 
-/* Bus route detail page — content fills to screen bottom; safe area is scroll padding only */
-.bus-detail-page {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-  overflow: hidden;
+/* Bus route detail page — document scroll + sticky header/map (index safe-area model) */
+body.bus-detail-page {
   padding-top: 0;
-  padding-bottom: 0;
+}
+
+.bus-detail-top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+}
+
+html[data-theme="lcd"] .bus-detail-top {
+  background: var(--bg-base);
 }
 
 .bus-detail-header {
-  flex-shrink: 0;
   width: 100%;
+  padding-top: var(--safe-top);
   border-bottom: 1px solid var(--border);
 }
 
@@ -836,7 +842,6 @@ html[data-theme="lcd"] .eta-row-clickable:active {
 
 .bus-map-wrap {
   position: relative;
-  flex-shrink: 0;
   width: 100%;
   z-index: 1;
   border-bottom: 1px solid var(--border);
@@ -892,16 +897,8 @@ html[data-theme="lcd"] .eta-row-clickable:active {
   color: var(--white-70);
 }
 
-.bus-stops {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: calc(40px + var(--safe-bottom));
+body.bus-detail-page .bus-stop:last-child {
+  border-bottom: none;
 }
 
 .bus-stop {
@@ -1740,8 +1737,7 @@ html[data-theme="lcd"] .route-search-key:active {
   .groups,
   .route-search-page .route-search-header,
   .route-search-main,
-  .bus-detail-page .bus-detail-header,
-  .bus-detail-page .bus-map-wrap,
+  .bus-detail-page .bus-detail-top,
   .bus-detail-page .bus-stops {
     width: 100%;
     max-width: var(--app-max-width);
