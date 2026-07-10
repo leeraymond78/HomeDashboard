@@ -176,7 +176,7 @@ export function buildRouteStopsFromFareStopIds(stopIds, stopList = cachedDb?.sto
  * @param {Record<string, unknown>} [routeList]
  * @returns {Record<string, unknown> | null}
  */
-export function findRouteFareEntry(routeStop, routeList = cachedDb?.routeList) {
+function findRouteFareEntry(routeStop, routeList = cachedDb?.routeList) {
   if (!routeStop?.type) return null;
   switch (routeStop.type) {
     case 'kmb':
@@ -289,7 +289,7 @@ export function findCtbRouteEntry(route, dir, routeList = cachedDb?.routeList) {
  * @param {Record<string, unknown>} [routeList]
  * @returns {Record<string, unknown> | null}
  */
-export function findGmbRouteEntry(realRouteId, routeSeq, routeList = cachedDb?.routeList) {
+function findGmbRouteEntry(realRouteId, routeSeq, routeList = cachedDb?.routeList) {
   if (!routeList || realRouteId == null) return null;
 
   for (const entry of Object.values(routeList)) {

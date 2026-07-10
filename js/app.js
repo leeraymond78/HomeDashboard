@@ -1,5 +1,5 @@
 import { loadWeatherSection, startWeatherRefresh } from './weather.js';
-import { distanceM, formatDistance, bootstrapLocation, geolocationBlockReason, getGeolocationPermission, getLastGeoError, getUserPosition, requestUserPosition } from './location.js';
+import { distanceM, formatDistance, bootstrapLocation, geolocationBlockReason, getLastGeoError, getUserPosition, requestUserPosition } from './location.js';
 import { escapeHtml } from './utils.js';
 import { initPullToRefresh } from './pull-to-refresh.js';
 import { ensureRouteSearchIndex } from './route-search-api.js';

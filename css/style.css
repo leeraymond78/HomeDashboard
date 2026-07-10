@@ -485,13 +485,6 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   color: var(--error);
 }
 
-.weather-body .weather-location-en {
-  margin: 0;
-  padding: 0 1rem;
-  font-size: 16px;
-  color: var(--white-38);
-}
-
 .weather-section > .weather-desc {
   margin: 0;
   padding: 0.35rem 1rem 0.5rem;
@@ -507,7 +500,6 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   color: var(--white-38);
 }
 
-.weather-loading,
 .weather-error {
   padding: 1rem;
 }
@@ -600,19 +592,6 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   font-size: 14px;
   color: var(--white-54);
   line-height: 1.35;
-}
-
-.weather-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  margin-top: 0.5rem;
-  font-size: 12px;
-  color: var(--white-38);
-}
-
-.weather-meta-partial {
-  color: var(--dest);
 }
 
 .weather-hko-btn {
@@ -1279,10 +1258,6 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 
 .bus-map .bus-stop-tooltip.leaflet-tooltip-top {
   margin-top: 0;
-}
-
-.bus-map .bus-stop-tooltip.leaflet-tooltip-top:before {
-  border-top-color: rgba(0, 0, 0, 0.85);
 }
 
 .bus-map .bus-stop-tooltip.leaflet-tooltip-top:before {

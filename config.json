@@ -10,9 +10,9 @@
         { "type": "kmb", "route": "53", "bound": "O", "stop": "971554761E4413EF" },
         { "type": "kmb", "route": "A33", "bound": "I", "stop": "CDE436F19F193080" },
         { "type": "kmb", "route": "252S", "bound": "O", "stop": "971554761E4413EF" },
-        { "type": "nwfb", "co": "CTB", "route": "952", "dir": "O", "stop": "001889" },
-        { "type": "nwfb", "co": "CTB", "route": "962", "dir": "O", "stop": "001889" },
-        { "type": "nwfb", "co": "CTB", "route": "952P", "dir": "O", "stop": "001889" }
+        { "type": "nwfb", "route": "952", "dir": "O", "stop": "001889" },
+        { "type": "nwfb", "route": "962", "dir": "O", "stop": "001889" },
+        { "type": "nwfb", "route": "952P", "dir": "O", "stop": "001889" }
       ]
     },
     {
@@ -26,9 +26,9 @@
       "title": "深圳灣口岸",
       "open": false,
       "routeStops": [
-        { "type": "nwfb", "co": "CTB", "route": "B3", "dir": "I", "stop": "003208" },
-        { "type": "nwfb", "co": "CTB", "route": "B3X", "dir": "I", "stop": "003208" },
-        { "type": "nwfb", "co": "CTB", "route": "B3M", "dir": "O", "stop": "003208" }
+        { "type": "nwfb", "route": "B3", "dir": "I", "stop": "003208" },
+        { "type": "nwfb", "route": "B3X", "dir": "I", "stop": "003208" },
+        { "type": "nwfb", "route": "B3M", "dir": "O", "stop": "003208" }
       ]
     },
     {
@@ -36,7 +36,7 @@
       "open": false,
       "routeStops": [
         { "type": "kmb", "route": "260X", "bound": "I", "stop": "AB057A63C24E990E" },
-        { "type": "nwfb", "co": "CTB", "route": "50", "dir": "I", "stop": "002627" }
+        { "type": "nwfb", "route": "50", "dir": "I", "stop": "002627" }
       ]
     },
     {
@@ -46,8 +46,8 @@
         { "type": "kmb", "route": "52X", "bound": "I", "stop": "C1590716F6FABC50" },
         { "type": "kmb", "route": "61M", "bound": "I", "stop": "C1590716F6FABC50" },
         { "type": "kmb", "route": "53", "bound": "I", "stop": "C1590716F6FABC50" },
-        { "type": "nwfb", "co": "CTB", "route": "952", "dir": "I", "stop": "003364" },
-        { "type": "nwfb", "co": "CTB", "route": "962", "dir": "I", "stop": "003359" }
+        { "type": "nwfb", "route": "952", "dir": "I", "stop": "003364" },
+        { "type": "nwfb", "route": "962", "dir": "I", "stop": "003359" }
       ]
     },
     {

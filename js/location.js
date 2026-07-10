@@ -13,10 +13,6 @@ export function getLastGeoError() {
   return lastGeoError;
 }
 
-export function hasGeolocation() {
-  return !!navigator.geolocation;
-}
-
 /** @returns {'unsupported' | 'insecure' | null} */
 export function geolocationBlockReason() {
   if (!navigator.geolocation) return 'unsupported';

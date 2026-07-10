@@ -47,13 +47,11 @@ export function initPullToRefresh(onRefresh) {
   const runRefresh = async () => {
     refreshing = true;
     indicator.classList.add('refreshing');
-    document.body.classList.add('pull-refreshing');
     try {
       await onRefresh();
     } finally {
       refreshing = false;
       indicator.classList.remove('refreshing');
-      document.body.classList.remove('pull-refreshing');
       reset({ animate: true });
     }
   };

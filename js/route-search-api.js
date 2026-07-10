@@ -292,16 +292,6 @@ async function refreshIndexInBackground() {
 }
 
 async function loadIndex() {
-  try {
-    localStorage.removeItem('homedashboard-route-search-v5');
-    localStorage.removeItem('homedashboard-route-search-gmb-v6');
-    localStorage.removeItem('homedashboard-route-search-v6');
-    localStorage.removeItem('homedashboard-route-search-v7');
-    localStorage.removeItem('homedashboard-route-search-v8');
-  } catch {
-    /* ignore */
-  }
-
   reportProgress('cache', 0, 1);
   const cached = readCache({ allowStale: true });
 
