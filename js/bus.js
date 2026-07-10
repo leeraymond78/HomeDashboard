@@ -911,7 +911,8 @@ async function initFlipBoundButton() {
 
 function initMap() {
   if (map) return;
-  map = L.map('bus-map', {
+  const container = document.getElementById('bus-map');
+  map = L.map(container, {
     zoomControl: false,
     minZoom: 10,
   });
@@ -926,6 +927,12 @@ function initMap() {
     maxZoom: 20,
     maxNativeZoom: 20,
   }).addTo(map);
+
+  const syncMapSize = () => map?.invalidateSize();
+  window.addEventListener('resize', syncMapSize);
+  if (window.ResizeObserver && container) {
+    new ResizeObserver(syncMapSize).observe(container);
+  }
 }
 
 function userLocationIcon() {
