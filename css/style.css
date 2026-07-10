@@ -1290,11 +1290,21 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   color: var(--white);
 }
 
+html:has(body.route-search-page) {
+  height: -webkit-fill-available;
+}
+
 body.route-search-page {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  min-height: -webkit-fill-available;
   padding-bottom: 0;
+  --route-search-key-height: 52px;
+  --route-search-keyboard-rows: 4;
+  --route-search-keyboard-height: calc(var(--route-search-key-height) * var(--route-search-keyboard-rows));
+  --route-search-viewport-bottom: 0px;
+  --route-search-bottom-pad: calc(var(--safe-bottom) + var(--route-search-viewport-bottom));
 }
 
 .route-search-page .route-search-header {
@@ -1334,7 +1344,7 @@ body.route-search-page {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding-bottom: calc(var(--route-search-keyboard-height) + var(--safe-bottom));
+  padding-bottom: calc(var(--route-search-keyboard-height) + var(--route-search-bottom-pad));
 }
 
 .route-search-results {
@@ -1441,13 +1451,10 @@ body.route-search-page {
 }
 
 .route-search-keyboard {
-  --route-search-key-height: 52px;
-  --route-search-keyboard-rows: 4;
-  --route-search-keyboard-height: calc(var(--route-search-key-height) * var(--route-search-keyboard-rows));
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--route-search-viewport-bottom);
   z-index: 10;
   display: flex;
   box-sizing: border-box;

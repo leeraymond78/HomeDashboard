@@ -261,6 +261,29 @@ async function loadIndex() {
   }
 }
 
+function syncKeyboardViewport() {
+  const vv = window.visualViewport;
+  if (!vv || !document.body.classList.contains('route-search-page')) return;
+  const gap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  document.body.style.setProperty('--route-search-viewport-bottom', `${gap}px`);
+}
+
+function bindViewportSync() {
+  const sync = () => syncKeyboardViewport();
+  window.visualViewport?.addEventListener('resize', sync);
+  window.visualViewport?.addEventListener('scroll', sync);
+  window.addEventListener('resize', sync);
+  window.addEventListener('orientationchange', sync);
+  window.addEventListener('pageshow', sync);
+  sync();
+  let frames = 0;
+  const settle = () => {
+    sync();
+    if (++frames < 12) requestAnimationFrame(settle);
+  };
+  requestAnimationFrame(settle);
+}
+
 function init() {
   inputEl = document.getElementById('route-search-input');
   resultsEl = document.getElementById('route-search-results');
@@ -268,6 +291,7 @@ function init() {
 
   if (!inputEl || !resultsEl || !keyboardEl) return;
 
+  bindViewportSync();
   buildKeyboard(keyboardEl);
   renderInput();
   loadIndex();
