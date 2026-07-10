@@ -1317,6 +1317,7 @@ body.route-search-page {
   --route-search-key-height: 52px;
   --route-search-keyboard-rows: 4;
   --route-search-keyboard-height: calc(var(--route-search-key-height) * var(--route-search-keyboard-rows));
+  --route-search-row-height: calc((var(--route-search-keyboard-height) + var(--safe-bottom)) / var(--route-search-keyboard-rows));
   --route-search-viewport-bottom: 0px;
   --route-search-bottom-pad: calc(var(--safe-bottom) + var(--route-search-viewport-bottom));
 }
@@ -1470,32 +1471,43 @@ body.route-search-page {
   right: 0;
   bottom: var(--route-search-viewport-bottom);
   z-index: 10;
-  display: flex;
   box-sizing: border-box;
   height: calc(var(--route-search-keyboard-height) + var(--safe-bottom));
+  overflow: hidden;
   border-top: 1px solid var(--border);
-  background: #1a1a1a;
+  background: #111;
 }
 
 .route-search-keyboard-num {
-  flex: 3;
+  width: 60%;
+  height: 100%;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  grid-template-rows:
-    repeat(3, var(--route-search-key-height))
-    calc(var(--route-search-key-height) + var(--safe-bottom));
+  grid-template-rows: repeat(4, 1fr);
+}
+
+.route-search-keyboard-num .route-search-key {
+  height: 100%;
+  min-height: 0;
+}
+
+.route-search-keyboard-alpha .route-search-key {
+  height: var(--route-search-row-height);
+  min-height: var(--route-search-row-height);
 }
 
 .route-search-keyboard-alpha {
-  flex: 2;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40%;
+  height: 100%;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  grid-auto-rows: var(--route-search-key-height);
+  grid-auto-rows: var(--route-search-row-height);
   align-content: start;
-  min-height: 100%;
-  max-height: calc(var(--route-search-keyboard-height) + var(--safe-bottom));
-  overflow-y: auto;
   overflow-x: hidden;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   border-left: 1px solid var(--border);
@@ -1525,8 +1537,6 @@ body.route-search-page {
 
 .route-search-keyboard-num .route-search-key:nth-last-child(-n+3) {
   background: #1c1c1c;
-  align-items: flex-start;
-  padding-top: 0.85rem;
 }
 
 .route-search-key:active {
