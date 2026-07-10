@@ -1,7 +1,6 @@
 import { distanceM, geolocationBlockReason, getUserPosition, requestUserPosition } from './location.js';
 import { escapeAttr, escapeHtml } from './utils.js';
 import {
-  clearMtrCache,
   clearRouteWideEtaCache,
   enrichEtasWithBusLocation,
   fetchEtas,
@@ -1156,7 +1155,10 @@ function formatEtaMinsLabel(eta) {
   return '到着';
 }
 
-function renderEtaList(etas) {
+function renderEtaList(etas, { loading = false } = {}) {
+  if (loading) {
+    return '<div class="bus-stop-empty">読み込み中…</div>';
+  }
   if (!etas.length) {
     return '<div class="bus-stop-empty">情報なし</div>';
   }
@@ -1218,6 +1220,22 @@ function updateStopEtaBody(section, etas) {
   if (inner) inner.innerHTML = renderEtaList(etas);
 }
 
+function formatFare(value) {
+  const amount = parseFloat(String(value));
+  if (!Number.isFinite(amount)) return '';
+  return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(1)}`;
+}
+
+function stopFareLabel(stop) {
+  if (!stop.fare && !stop.fareHoliday) return '';
+  const weekday = stop.fare ? formatFare(stop.fare) : '';
+  if (stop.fareHoliday && stop.fareHoliday !== stop.fare) {
+    const holiday = formatFare(stop.fareHoliday);
+    return weekday ? `${weekday} / 假日 ${holiday}` : `假日 ${holiday}`;
+  }
+  return weekday;
+}
+
 function renderStops({ currentIdx, closestIdx }) {
   const container = document.getElementById('bus-stops');
   if (!routeStops.length) {
@@ -1231,7 +1249,8 @@ function renderStops({ currentIdx, closestIdx }) {
     const isNext = index === currentIdx + 1;
     const key = stopKey(stop);
     const expanded = expandedStops.has(key);
-    const etas = expanded ? (stopEtas.get(key) ?? []) : [];
+    const etas = stopEtas.get(key);
+    const etaLoading = expanded && !stopEtas.has(key);
     const rowClass = [
       'bus-stop',
       isCurrent ? 'bus-stop-current' : '',
@@ -1247,6 +1266,7 @@ function renderStops({ currentIdx, closestIdx }) {
     const markerClass = isCurrent
       ? 'bus-stop-num-current'
       : (isClosest ? 'bus-stop-num-closest' : (isNext ? 'bus-stop-num-next' : ''));
+    const fareLabel = stopFareLabel(stop);
 
     return `
       <section class="${rowClass}" data-stop-key="${escapeAttr(key)}" data-index="${index}">
@@ -1254,7 +1274,10 @@ function renderStops({ currentIdx, closestIdx }) {
           <span class="bus-stop-num ${markerClass}">${stop.seq}</span>
           <span class="bus-stop-info">
             ${badges.length ? `<span class="bus-stop-badges">${badges.join('')}</span>` : ''}
-            <span class="bus-stop-name">${escapeHtml(stop.name)}</span>
+            <span class="bus-stop-title-row">
+              <span class="bus-stop-name">${escapeHtml(stop.name)}</span>
+              ${fareLabel ? `<span class="bus-stop-fare">${escapeHtml(fareLabel)}</span>` : ''}
+            </span>
           </span>
           <svg class="bus-stop-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <polyline points="6 9 12 15 18 9"/>
@@ -1262,7 +1285,7 @@ function renderStops({ currentIdx, closestIdx }) {
         </button>
         <div class="bus-stop-body">
           <div class="bus-stop-body-inner">
-            ${renderEtaList(etas)}
+            ${renderEtaList(etas ?? [], { loading: etaLoading })}
           </div>
         </div>
       </section>`;
@@ -1324,6 +1347,10 @@ async function toggleStop(stop, forceOpen = false) {
     });
     expandedStops.clear();
     expandedStops.add(key);
+    renderStops({
+      currentIdx: findCurrentStopIndex(),
+      closestIdx: findClosestStopIndex(getUserPosition()),
+    });
 
     const etas = await fetchStopEtas(stop);
     stopEtas.set(key, etas);
@@ -1366,7 +1393,6 @@ async function refresh({ silent = false } = {}) {
     stopEtas.set(key, etas);
   }));
 
-  clearMtrCache();
   clearRouteWideEtaCache();
   lastRefresh = new Date();
   const userPos = getUserPosition();
@@ -1379,7 +1405,10 @@ async function refresh({ silent = false } = {}) {
 
 function startRefreshTimer() {
   if (refreshTimerId) clearInterval(refreshTimerId);
-  refreshTimerId = setInterval(() => refresh({ silent: true }), REFRESH_INTERVAL_MS);
+  refreshTimerId = setInterval(() => {
+    if (document.hidden) return;
+    refresh({ silent: true });
+  }, REFRESH_INTERVAL_MS);
 }
 
 function updateRefreshTimer() {
@@ -1419,17 +1448,17 @@ async function init() {
   const titleHint = routeTitleHint(routeStop);
   if (titleHint) document.getElementById('bus-title').textContent = titleHint;
 
-  await initFlipBoundButton();
-
   initMap();
   bindLocateButton();
   window.addEventListener('userposition', (event) => {
     setUserMapMarker(/** @type {CustomEvent<GeolocationPosition>} */ (event).detail);
   });
 
+  void initFlipBoundButton();
+
   try {
     routeStops = await fetchRouteStops(routeStop);
-    const title = await routeTitle(routeStop, routeStops);
+    const title = routeTitleHint(routeStop) || await routeTitle(routeStop, routeStops);
     document.getElementById('bus-title').textContent = title;
 
     const currentIdx = findCurrentStopIndex();
@@ -1437,11 +1466,7 @@ async function init() {
     updateMap({ currentIdx, closestIdx });
 
     const configured = routeStops[currentIdx];
-    if (configured) {
-      expandedStops.add(stopKey(configured));
-      const etas = await fetchStopEtas(configured);
-      stopEtas.set(stopKey(configured), etas);
-    }
+    if (configured) expandedStops.add(stopKey(configured));
 
     renderStops({ currentIdx, closestIdx });
     updateBusLocationMarkers();
@@ -1459,6 +1484,17 @@ async function init() {
     setInterval(updateRefreshTimer, 1000);
     setInterval(updateLiveMinutes, 15_000);
     updateRefreshTimer();
+
+    if (configured) {
+      void (async () => {
+        const etas = await fetchStopEtas(configured);
+        stopEtas.set(stopKey(configured), etas);
+        renderStops({ currentIdx, closestIdx });
+        updateBusLocationMarkers();
+        const refinedTitle = await routeTitle(routeStop, routeStops);
+        if (refinedTitle) document.getElementById('bus-title').textContent = refinedTitle;
+      })();
+    }
 
     document.getElementById('refresh-btn').addEventListener('click', async () => {
       const btn = document.getElementById('refresh-btn');

@@ -2,12 +2,10 @@ import { escapeHtml } from './utils.js';
 import { operatorClass, serializeRouteStop } from './transit-api.js';
 import {
   ensureRouteSearchIndex,
-  enrichGmbResults,
-  enrichNwfbResults,
   getAlphabetCandidates,
   isRouteSearchIndexReady,
   resolveRouteStop,
-  searchRoutesInstant,
+  searchRoutes,
   setRouteSearchProgressCallback,
 } from './route-search-api.js';
 
@@ -26,16 +24,11 @@ const SEARCH_STATE_KEY = 'homedashboard-route-search-state';
 const SEARCH_RESTORE_KEY = 'homedashboard-route-search-restore';
 const LOAD_LABEL = {
   cache: 'キャッシュから読み込み中…',
-  kmb: '九巴データを読み込み中…',
-  nwfb: '城巴データを読み込み中…',
-  mtr: '港鐵バスデータを読み込み中…',
-  gmb: '小巴リストを読み込み中…',
+  routes: '路線データを読み込み中…',
 };
 
 /** @type {string} */
 let query = '';
-/** @type {number} */
-let searchGeneration = 0;
 /** @type {ReturnType<typeof setTimeout> | null} */
 let searchTimer = null;
 /** @type {boolean} */
@@ -122,6 +115,7 @@ function formatMatchDest(match) {
 function isSpecialService(match) {
   if (match.type === 'kmb') return match.service_type != null && match.service_type !== 1;
   if (match.type === 'nwfb') return Boolean(match.nwfbSpecial);
+  if (match.type === 'mtr') return Boolean(match.mtrSpecial);
   if (match.type === 'gmb') return Boolean(match.gmbSpecial);
   return false;
 }
@@ -215,8 +209,7 @@ function renderResults(matches) {
   });
 }
 
-async function runSearch() {
-  const gen = ++searchGeneration;
+function runSearch() {
   renderInput();
 
   if (!indexReady) return;
@@ -227,21 +220,8 @@ async function runSearch() {
     return;
   }
 
-  const instant = searchRoutesInstant(query);
-  if (gen !== searchGeneration) return;
-  renderResults(instant);
-
-  try {
-    const withNwfb = await enrichNwfbResults(instant);
-    const matches = await enrichGmbResults(query, withNwfb);
-    if (gen !== searchGeneration) return;
-    renderResults(matches);
-  } catch {
-    if (gen !== searchGeneration) return;
-    renderResults(instant);
-  } finally {
-    saveSearchState();
-  }
+  renderResults(searchRoutes(query));
+  saveSearchState();
 }
 
 function scheduleSearch() {
@@ -322,7 +302,7 @@ function buildKeyboard(container) {
 async function loadIndex() {
   setRouteSearchProgressCallback(renderLoadProgress);
   setKeyboardEnabled(false);
-  renderLoadProgress({ phase: 'kmb', loaded: 0, total: 1 });
+  renderLoadProgress({ phase: 'routes', loaded: 0, total: 1 });
 
   try {
     await ensureRouteSearchIndex();

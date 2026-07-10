@@ -3,13 +3,14 @@ import { distanceM, formatDistance, bootstrapLocation, geolocationBlockReason, g
 import { escapeHtml } from './utils.js';
 import { initPullToRefresh } from './pull-to-refresh.js';
 import { ensureRouteSearchIndex } from './route-search-api.js';
+import { ensureRouteFareDb, getFareStop } from './route-fare-db.js';
 import {
   SOCIF_GEO,
-  clearMtrCache,
   enrichEtasWithBusLocation,
   fetchEtas,
   fetchRouteStops,
   getMtrStopGeo,
+  parseRouteStop,
   routeStopId,
   serializeRouteStop,
 } from './transit-api.js';
@@ -45,6 +46,10 @@ const groupState = new Map();
 const groupShowAllEtas = new Set();
 /** @type {Map<string, import('./transit-api.js').RouteStopInfo[]>} */
 const routeStopsCache = new Map();
+/** @type {Set<number>} */
+const refreshInFlight = new Set();
+/** @type {Set<number>} */
+const refreshPending = new Set();
 
 async function loadConfig() {
   const res = await fetch('config.json');
@@ -59,24 +64,24 @@ async function loadStopGeo() {
 
 async function loadRouteStopGeo(rs) {
   try {
-    if (rs.type === 'kmb') {
-      const res = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${rs.stop}`);
-      const json = await res.json();
-      const d = json.data;
-      stopGeo.set(rs.stop, { lat: parseFloat(d.lat), lng: parseFloat(d.long) });
+    await ensureRouteFareDb();
+    if (rs.type === 'kmb' || rs.type === 'nwfb') {
+      const stopId = rs.stop;
+      const stop = getFareStop(stopId);
+      if (stop?.location) {
+        stopGeo.set(stopId, { lat: stop.location.lat, lng: stop.location.lng });
+        return;
+      }
     } else if (rs.type === 'mtr') {
       const geo = await getMtrStopGeo(rs.stopId);
       if (geo) stopGeo.set(rs.stopId, geo);
-    } else if (rs.type === 'nwfb') {
-      const res = await fetch(`https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/stop/${rs.stop}`);
-      const json = await res.json();
-      const d = json.data;
-      stopGeo.set(rs.stop, { lat: parseFloat(d.lat), lng: parseFloat(d.long) });
+      return;
     } else if (rs.type === 'gmb') {
-      const res = await fetch(`https://data.etagmb.gov.hk/stop/${rs.stopId}`);
-      const json = await res.json();
-      const d = json.data.coordinates.wgs84;
-      stopGeo.set(rs.stopId, { lat: parseFloat(d.latitude), lng: parseFloat(d.longitude) });
+      const stop = getFareStop(rs.stopId);
+      if (stop?.location) {
+        stopGeo.set(rs.stopId, { lat: stop.location.lat, lng: stop.location.lng });
+        return;
+      }
     } else if (rs.type === 'socif') {
       const key = `${rs.route}-${rs.routeSeq}-${rs.stopSeq}`;
       if (SOCIF_GEO[key]) stopGeo.set(key, SOCIF_GEO[key]);
@@ -334,10 +339,7 @@ function createEtaRowElement(row) {
     <td class="eta-mins ${row.etaClass}"></td>
     <td class="remark-cell"></td>`;
   patchEtaRow(tr, row);
-  if (row.routeStop) {
-    tr.dataset.hasNav = '1';
-    tr.addEventListener('click', () => navigateToBusDetail(row.routeStop));
-  }
+  setEtaRowNavigation(tr, row.routeStop);
   return tr;
 }
 
@@ -457,16 +459,43 @@ function scheduleGroupBodyClear(index) {
   panel.addEventListener('transitionend', onEnd);
 }
 
+function setEtaRowNavigation(tr, routeStop) {
+  if (!routeStop) {
+    tr.classList.remove('eta-row-clickable');
+    delete tr.dataset.routeStop;
+    return;
+  }
+  tr.classList.add('eta-row-clickable');
+  tr.dataset.routeStop = serializeRouteStop(routeStop);
+}
+
+function bindEtaRowNavigation(tbody) {
+  if (tbody.dataset.navBound) return;
+  tbody.dataset.navBound = '1';
+  tbody.addEventListener('click', (e) => {
+    const tr = e.target.closest('.eta-row-clickable');
+    if (!tr?.dataset.routeStop) return;
+    const rs = parseRouteStop(new URLSearchParams(tr.dataset.routeStop));
+    if (rs) navigateToBusDetail(rs);
+  });
+}
+
 function ensureEtaTable(body) {
   let table = body.querySelector('.eta-table');
-  if (table) return table.querySelector('tbody');
+  if (table) {
+    const tbody = table.querySelector('tbody');
+    bindEtaRowNavigation(tbody);
+    return tbody;
+  }
 
   body.replaceChildren();
   table = document.createElement('table');
   table.className = 'eta-table';
   table.innerHTML = `${ETA_TABLE_COLGROUP}<tbody></tbody>`;
   body.appendChild(table);
-  return table.querySelector('tbody');
+  const tbody = table.querySelector('tbody');
+  bindEtaRowNavigation(tbody);
+  return tbody;
 }
 
 function showGroupMessage(body, className, text) {
@@ -543,11 +572,7 @@ function syncGroupBody(index) {
   displayEtas.forEach((eta, i) => {
     if (existing[i]) {
       patchEtaRow(existing[i], eta);
-      if (eta.routeStop && !existing[i].dataset.hasNav) {
-        existing[i].classList.add('eta-row-clickable');
-        existing[i].dataset.hasNav = '1';
-        existing[i].addEventListener('click', () => navigateToBusDetail(eta.routeStop));
-      }
+      setEtaRowNavigation(existing[i], eta.routeStop);
     } else {
       tbody.appendChild(createEtaRowElement(eta));
     }
@@ -672,56 +697,72 @@ async function refreshGroup(index, { silent = false } = {}) {
   const group = config.groups[index];
   if (!group.open) return;
 
-  const gen = (enrichGeneration.get(index) ?? 0) + 1;
-  enrichGeneration.set(index, gen);
-
-  const isFirstLoad = !groupEtas.has(index);
-  if (!silent && isFirstLoad) {
-    groupState.set(index, 'loading');
-    groupEtas.set(index, []);
-    updateGroup(index);
+  if (refreshInFlight.has(index)) {
+    refreshPending.add(index);
+    return;
   }
 
-  let hadError = false;
-  const tasks = group.routeStops.map(async (rs) => {
-    if (enrichGeneration.get(index) !== gen) return;
-    try {
-      const etas = await fetchEtas(rs);
-      if (enrichGeneration.get(index) !== gen) return;
+  refreshInFlight.add(index);
+  try {
+    const gen = (enrichGeneration.get(index) ?? 0) + 1;
+    enrichGeneration.set(index, gen);
 
-      if (silent && groupEtas.has(index)) {
-        mergeBasicRefreshForRoute(index, rs, etas);
-      } else {
-        const current = groupEtas.get(index) ?? [];
-        groupEtas.set(index, [...current, ...etas].sort((a, b) => a.etaTime - b.etaTime));
-      }
-
-      groupState.set(index, 'ok');
-      lastRefresh = new Date();
+    const isFirstLoad = !groupEtas.has(index);
+    if (!silent && isFirstLoad) {
+      groupState.set(index, 'loading');
+      groupEtas.set(index, []);
       updateGroup(index);
-      await enrichRouteStopEtas(index, rs, gen);
-    } catch {
-      hadError = true;
     }
-  });
 
-  await Promise.all(tasks);
+    let hadError = false;
+    const tasks = group.routeStops.map(async (rs) => {
+      if (enrichGeneration.get(index) !== gen) return;
+      try {
+        const etas = await fetchEtas(rs);
+        if (enrichGeneration.get(index) !== gen) return;
 
-  if (hadError && isFirstLoad && !(groupEtas.get(index)?.length)) {
-    groupState.set(index, 'error');
-    updateGroup(index);
+        if (silent && groupEtas.has(index)) {
+          mergeBasicRefreshForRoute(index, rs, etas);
+        } else {
+          const current = groupEtas.get(index) ?? [];
+          groupEtas.set(index, [...current, ...etas].sort((a, b) => a.etaTime - b.etaTime));
+        }
+
+        groupState.set(index, 'ok');
+        lastRefresh = new Date();
+        updateGroup(index);
+        await enrichRouteStopEtas(index, rs, gen);
+      } catch {
+        hadError = true;
+      }
+    });
+
+    await Promise.all(tasks);
+
+    if (hadError && isFirstLoad && !(groupEtas.get(index)?.length)) {
+      groupState.set(index, 'error');
+      updateGroup(index);
+    }
+  } finally {
+    refreshInFlight.delete(index);
+    if (refreshPending.has(index)) {
+      refreshPending.delete(index);
+      void refreshGroup(index, { silent: true });
+    }
   }
 }
 
 function refreshOpenGroups({ silent = true } = {}) {
-  clearMtrCache();
   const open = config.groups.map((g, i) => (g.open ? i : -1)).filter((i) => i >= 0);
   return Promise.all(open.map((i) => refreshGroup(i, { silent })));
 }
 
 function startRefreshTimer() {
   if (refreshTimerId) clearInterval(refreshTimerId);
-  refreshTimerId = setInterval(() => refreshOpenGroups(), REFRESH_INTERVAL_MS);
+  refreshTimerId = setInterval(() => {
+    if (document.hidden) return;
+    refreshOpenGroups();
+  }, REFRESH_INTERVAL_MS);
 }
 
 function updateRefreshTimer() {

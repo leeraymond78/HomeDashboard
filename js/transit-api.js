@@ -1,9 +1,19 @@
 /** @typedef {{ type: string, [key: string]: unknown }} RouteStopConfig */
-/** @typedef {{ seq: number, stopId: string, name: string, lat: number | null, lng: number | null }} RouteStopInfo */
+/** @typedef {{ seq: number, stopId: string, name: string, lat: number | null, lng: number | null, fare?: string, fareHoliday?: string | null }} RouteStopInfo */
 /** @typedef {{ routeId: string, operator: string, express: { text: string, cls: string }, routeClass: string, time: string, dest: string, mins: number, remark: string, etaClass: string, etaTime: Date, etaSeq?: number, busLat?: number | null, busLng?: number | null, busStopSeq?: number | null, busStopName?: string | null, busStopsLeft?: number | null, busAwaitingDepart?: boolean, routeStop?: RouteStopConfig }} EtaRow */
 /** @typedef {{ seq: number, eta_seq: number, eta: string, dir?: string }} RouteWideEtaRow */
 
 import { distanceM } from './location.js';
+import {
+  attachFaresToRouteStops,
+  buildRouteStopsFromFareStopIds,
+  ensureRouteFareDb,
+  findCtbRouteEntry,
+  findKmbRouteEntry,
+  findLrtfeederRouteEntry,
+  getFareStop,
+  getGmbRouteDest,
+} from './route-fare-db.js';
 
 export const MTR_DEST = {
   FT: '富泰',
@@ -33,21 +43,26 @@ export const MTR_GEO = {
   'K51A-U070': { lat: 22.39834, lng: 113.9752 },
 };
 
-/** @type {Map<string, { rows: RouteWideEtaRow[], fetchedAt: number }>} */
+/** @type {Map<string, { rows: RouteWideEtaRow[], fetchedAt: number, perStopSourced?: boolean }>} */
 const routeWideEtaCache = new Map();
+/** @type {Map<string, Promise<{ rows: RouteWideEtaRow[], perStopSourced: boolean }>>} */
+const routeWideEtaInflight = new Map();
 const ROUTE_WIDE_ETA_TTL_MS = 30_000;
-/** @type {Map<string, object>} */
+const EMPTY_ROUTE_WIDE_ETA_TTL_MS = 5 * 60_000;
+const MTR_SCHEDULE_TTL_MS = 60_000;
+const SOCIF_ROUTE_ETA_TTL_MS = 30_000;
+/** @type {Map<string, { stops: object[], fetchedAt: number }>} */
 const mtrCache = new Map();
 /** @type {Map<string, string>} */
 const gmbDestCache = new Map();
+/** @type {Map<string, { data: unknown, fetchedAt: number }>} */
+const socifRouteEtaCache = new Map();
 /** @type {Map<string, { lat: number, lng: number, name: string }>} */
 const stopDetailCache = new Map();
 /** @type {Map<string, any>} */
 const socifRouteCache = new Map();
 /** @type {Map<string, any[]>} */
 const socifWeekdayScheduleCache = new Map();
-/** @type {Map<string, { nameChi: string, lat: number, lng: number, direction: string, seq: number }> | null} */
-let mtrCsvByStopId = null;
 
 export function operatorClass(op) {
   return { kmb: 'color-kmb', mtr: 'color-mtr', gmb: 'color-gmb', nwfb: 'color-nwfb', socif: 'color-socif' }[op] ?? '';
@@ -103,17 +118,16 @@ export function mtrRouteFromStopId(stopId) {
   return stopId.split('-')[0];
 }
 
-function mtrDirectionFromStopId(stopId) {
-  return stopId.includes('-D') ? 'I' : 'O';
-}
-
 function mtrDestFromLineRef(lineRef) {
   const suffix = lineRef.split('_').slice(1).join('_');
   return MTR_DEST[suffix] ?? suffix;
 }
 
 async function fetchMtrSchedule(route) {
-  if (mtrCache.has(route)) return mtrCache.get(route);
+  const cached = mtrCache.get(route);
+  if (cached && Date.now() - cached.fetchedAt < MTR_SCHEDULE_TTL_MS) {
+    return cached.stops;
+  }
   const res = await fetch('https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -121,7 +135,7 @@ async function fetchMtrSchedule(route) {
   });
   const json = await res.json();
   const stops = json.busStop ?? [];
-  mtrCache.set(route, stops);
+  mtrCache.set(route, { stops, fetchedAt: Date.now() });
   return stops;
 }
 
@@ -136,16 +150,34 @@ export function clearRouteWideEtaCache() {
 async function gmbDestination(realRouteId, routeSeq) {
   const key = `${realRouteId}-${routeSeq}`;
   if (gmbDestCache.has(key)) return gmbDestCache.get(key);
+  const dest = getGmbRouteDest(realRouteId, routeSeq);
+  if (dest) {
+    gmbDestCache.set(key, dest);
+    return dest;
+  }
   try {
     const res = await fetch(`https://data.etagmb.gov.hk/route/${realRouteId}`);
     const json = await res.json();
     const dir = json.data?.[0]?.directions?.find((d) => d.route_seq === routeSeq);
-    const dest = dir?.dest_tc?.trim() ?? '';
-    gmbDestCache.set(key, dest);
-    return dest;
+    const fallback = dir?.dest_tc?.trim() ?? '';
+    gmbDestCache.set(key, fallback);
+    return fallback;
   } catch {
     return '';
   }
+}
+
+async function fetchSocifRouteEtaData(route, routeSeq) {
+  const key = `${route}:${routeSeq}`;
+  const cached = socifRouteEtaCache.get(key);
+  if (cached && Date.now() - cached.fetchedAt < SOCIF_ROUTE_ETA_TTL_MS) {
+    return cached.data;
+  }
+  const res = await fetch(`https://360-api.socif.co/api/eta/route-stop/${route}/${routeSeq}`);
+  const json = await res.json();
+  const data = json.data ?? {};
+  socifRouteEtaCache.set(key, { data, fetchedAt: Date.now() });
+  return data;
 }
 
 const KMB_STOP_CODE_SUFFIX = /\s*\([A-Z0-9]+\)\s*$/;
@@ -226,20 +258,11 @@ export async function fetchSocifWeekdaySchedule(routeId, weekdayIndex) {
   return schedules;
 }
 
-async function loadMtrStops() {
-  if (mtrCsvByStopId) return mtrCsvByStopId;
-  const res = await fetch('data/mtr-bus-stops.json');
-  if (!res.ok) throw new Error('MTR停留所データを読み込めません');
-  const data = await res.json();
-  mtrCsvByStopId = new Map(Object.entries(data));
-  return mtrCsvByStopId;
-}
-
 /** @param {string} stopId */
 export async function getMtrStopGeo(stopId) {
-  const stops = await loadMtrStops();
-  const row = stops.get(stopId);
-  if (row) return { lat: row.lat, lng: row.lng };
+  await ensureRouteFareDb();
+  const stop = getFareStop(stopId);
+  if (stop?.location) return { lat: stop.location.lat, lng: stop.location.lng };
   return MTR_GEO[stopId] ?? null;
 }
 
@@ -355,7 +378,10 @@ function normalizeRouteWideEtas(rows) {
 /** @param {RouteStopConfig} routeStop */
 function routeWideEtaCacheKey(routeStop) {
   if (routeStop.type === 'gmb') {
-    return `gmb:${routeStop.realRouteId}:${routeStop.routeSeq}`;
+    return `gmb:${routeStop.realRouteId}:${routeStop.stopId}`;
+  }
+  if (routeStop.type === 'nwfb') {
+    return `nwfb:${routeStop.route}:${routeStop.dir ?? 'O'}`;
   }
   return `${routeStop.type}:${JSON.stringify({
     route: routeStop.route ?? routeStop.routeId,
@@ -364,14 +390,13 @@ function routeWideEtaCacheKey(routeStop) {
   })}`;
 }
 
-/** @param {RouteStopConfig} routeStop @param {RouteStopInfo[]} [routeStops] @returns {Promise<{ rows: RouteWideEtaRow[], perStopSourced: boolean }>} */
-export async function fetchRouteWideEtas(routeStop, routeStops = []) {
-  const cacheKey = routeWideEtaCacheKey(routeStop);
-  const cached = routeWideEtaCache.get(cacheKey);
-  if (cached && Date.now() - cached.fetchedAt < ROUTE_WIDE_ETA_TTL_MS) {
-    return { rows: cached.rows, perStopSourced: cached.perStopSourced ?? false };
-  }
+function routeWideEtaCacheValid(cached) {
+  const ttl = cached.rows.length ? ROUTE_WIDE_ETA_TTL_MS : EMPTY_ROUTE_WIDE_ETA_TTL_MS;
+  return Date.now() - cached.fetchedAt < ttl;
+}
 
+/** @param {RouteStopConfig} routeStop @param {RouteStopInfo[]} [routeStops] @returns {Promise<{ rows: RouteWideEtaRow[], perStopSourced: boolean }>} */
+async function loadRouteWideEtas(routeStop) {
   let rows = [];
   let perStopSourced = false;
   switch (routeStop.type) {
@@ -394,29 +419,12 @@ export async function fetchRouteWideEtas(routeStop, routeStops = []) {
         if (dir) rows = rows.filter((row) => !row.dir || row.dir === dir);
         if (rows.length) break;
       }
-      if (!rows.length && routeStops.length) {
-        perStopSourced = true;
-        const batches = await Promise.all(routeStops.map(async (stop) => {
-          try {
-            const res = await fetch(`https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/eta/CTB/${stop.stopId}/${routeStop.route}`);
-            const json = await res.json();
-            return (json.data ?? [])
-              .filter((e) => e.eta)
-              .filter((e) => !dir || e.dir === dir)
-              .map((e) => ({ ...e, seq: stop.seq }));
-          } catch {
-            return [];
-          }
-        }));
-        rows = normalizeRouteWideEtas(batches.flat());
-      }
       break;
     }
     case 'socif': {
-      const res = await fetch(`https://360-api.socif.co/api/eta/route-stop/${routeStop.route}/${routeStop.routeSeq}`);
-      const json = await res.json();
+      const data = await fetchSocifRouteEtaData(routeStop.route, routeStop.routeSeq);
       const flat = [];
-      for (const stop of json.data?.eta ?? []) {
+      for (const stop of data.eta ?? []) {
         for (const eta of stop.eta ?? []) {
           flat.push({ ...eta, stopSeq: stop.stopSeq });
         }
@@ -425,32 +433,50 @@ export async function fetchRouteWideEtas(routeStop, routeStops = []) {
       break;
     }
     case 'gmb': {
-      if (!routeStops.length) break;
-      const realId = parseInt(String(routeStop.realRouteId), 10);
-      const routeSeq = routeStop.routeSeq;
-      const batches = await Promise.all(routeStops.map(async (stop) => {
-        try {
-          const res = await fetch(`https://data.etagmb.gov.hk/eta/stop/${stop.stopId}`);
-          const json = await res.json();
-          const entry = (json.data ?? []).find((d) =>
-            d.route_id === realId && d.route_seq === routeSeq);
-          if (!entry?.eta?.length) return [];
-          return entry.eta
+      if (!routeStop.stopId) break;
+      try {
+        const res = await fetch(
+          `https://data.etagmb.gov.hk/eta/route-stop/${routeStop.realRouteId}/${routeStop.stopId}`,
+        );
+        const json = await res.json();
+        rows = normalizeRouteWideEtas((json.data ?? []).flatMap((entry) =>
+          (entry.eta ?? [])
             .filter((e) => e.timestamp)
-            .map((e) => ({ ...e, seq: stop.seq }));
-        } catch {
-          return [];
-        }
-      }));
-      rows = normalizeRouteWideEtas(batches.flat());
+            .map((e) => ({ ...e, seq: entry.stop_seq })),
+        ));
+      } catch {
+        rows = [];
+      }
       break;
     }
     default:
       break;
   }
 
-  routeWideEtaCache.set(cacheKey, { rows, fetchedAt: Date.now(), perStopSourced });
   return { rows, perStopSourced };
+}
+
+/** @param {RouteStopConfig} routeStop @param {RouteStopInfo[]} [_routeStops] @returns {Promise<{ rows: RouteWideEtaRow[], perStopSourced: boolean }>} */
+export async function fetchRouteWideEtas(routeStop, _routeStops = []) {
+  const cacheKey = routeWideEtaCacheKey(routeStop);
+  const cached = routeWideEtaCache.get(cacheKey);
+  if (cached && routeWideEtaCacheValid(cached)) {
+    return { rows: cached.rows, perStopSourced: cached.perStopSourced ?? false };
+  }
+
+  const inflight = routeWideEtaInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const promise = loadRouteWideEtas(routeStop)
+    .then((result) => {
+      routeWideEtaCache.set(cacheKey, { ...result, fetchedAt: Date.now() });
+      return result;
+    })
+    .finally(() => {
+      routeWideEtaInflight.delete(cacheKey);
+    });
+  routeWideEtaInflight.set(cacheKey, promise);
+  return promise;
 }
 
 function interpolateCoords(a, b, t) {
@@ -820,10 +846,8 @@ export async function fetchMtrEtas(routeStop) {
 }
 
 export async function fetchSocifEtas(routeStop) {
-  const url = `https://360-api.socif.co/api/eta/route-stop/${routeStop.route}/${routeStop.routeSeq}`;
-  const res = await fetch(url);
-  const json = await res.json();
-  const stopEta = (json.data?.eta ?? []).find((s) => s.stopSeq === routeStop.stopSeq);
+  const data = await fetchSocifRouteEtaData(routeStop.route, routeStop.routeSeq);
+  const stopEta = (data.eta ?? []).find((s) => s.stopSeq === routeStop.stopSeq);
   if (!stopEta?.eta?.length) return [];
   const dest = routeStop.dest ?? '';
   const displayRoute = routeStop.routeId ?? String(routeStop.route);
@@ -891,6 +915,34 @@ export async function fetchEtas(routeStop) {
 }
 
 export async function fetchKmbRouteStops(routeStop) {
+  const db = await ensureRouteFareDb();
+  const entry = findKmbRouteEntry(
+    routeStop.route,
+    routeStop.bound,
+    routeStop.service_type ?? 1,
+    db.routeList,
+  );
+  const stopIds = entry?.stops?.kmb;
+  if (Array.isArray(stopIds) && stopIds.length) {
+    const stops = buildRouteStopsFromFareStopIds(stopIds, db.stopList, formatKmbStopName);
+    const missingCoords = stops.filter((s) => s.lat == null || s.lng == null).map((s) => s.stopId);
+    if (missingCoords.length) {
+      const details = await Promise.all(
+        missingCoords.map((stopId) => fetchKmbStop(stopId).catch(() => null)),
+      );
+      const detailById = new Map(missingCoords.map((id, i) => [id, details[i]]));
+      for (const stop of stops) {
+        if (stop.lat != null && stop.lng != null) continue;
+        const detail = detailById.get(stop.stopId);
+        if (!detail) continue;
+        stop.lat = detail.lat;
+        stop.lng = detail.lng;
+        if (!stop.name || stop.name === stop.stopId) stop.name = detail.name;
+      }
+    }
+    return stops;
+  }
+
   const bound = routeStop.bound === 'I' ? 'inbound' : 'outbound';
   const serviceType = routeStop.service_type ?? 1;
   const url = `https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${routeStop.route}/${bound}/${serviceType}`;
@@ -911,6 +963,29 @@ export async function fetchKmbRouteStops(routeStop) {
 }
 
 export async function fetchNwfbRouteStops(routeStop) {
+  const db = await ensureRouteFareDb();
+  const entry = findCtbRouteEntry(routeStop.route, routeStop.dir, db.routeList);
+  const stopIds = entry?.stops?.ctb;
+  if (Array.isArray(stopIds) && stopIds.length) {
+    const stops = buildRouteStopsFromFareStopIds(stopIds, db.stopList);
+    const missingCoords = stops.filter((s) => s.lat == null || s.lng == null).map((s) => s.stopId);
+    if (missingCoords.length) {
+      const details = await Promise.all(
+        missingCoords.map((stopId) => fetchNwfbStop(stopId).catch(() => null)),
+      );
+      const detailById = new Map(missingCoords.map((id, i) => [id, details[i]]));
+      for (const stop of stops) {
+        if (stop.lat != null && stop.lng != null) continue;
+        const detail = detailById.get(stop.stopId);
+        if (!detail) continue;
+        stop.lat = detail.lat;
+        stop.lng = detail.lng;
+        if (!stop.name || stop.name === stop.stopId) stop.name = detail.name;
+      }
+    }
+    return stops;
+  }
+
   const dir = routeStop.dir === 'I' ? 'inbound' : 'outbound';
   const url = `https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/route-stop/CTB/${routeStop.route}/${dir}`;
   const res = await fetch(url);
@@ -930,28 +1005,26 @@ export async function fetchNwfbRouteStops(routeStop) {
 }
 
 export async function fetchMtrRouteStops(routeStop) {
-  const route = mtrRouteFromStopId(routeStop.stopId);
-  const direction = mtrDirectionFromStopId(routeStop.stopId);
-  const dirPrefix = direction === 'I' ? '-D' : '-U';
-  const csv = await loadMtrStops();
-  const schedule = await fetchMtrSchedule(route);
-  const orderedIds = schedule
-    .map((s) => s.busStopId)
-    .filter((id) => id.includes(dirPrefix));
+  const db = await ensureRouteFareDb();
+  const entry = findLrtfeederRouteEntry(routeStop.stopId, db.routeList);
+  const stopIds = entry?.stops?.lrtfeeder;
+  if (!Array.isArray(stopIds) || !stopIds.length) {
+    throw new Error('MTR停留所データを読み込めません');
+  }
 
   /** @type {RouteStopInfo[]} */
   const stops = [];
   let seq = 0;
-  for (const stopId of orderedIds) {
+  for (const stopId of stopIds) {
     seq += 1;
-    const csvRow = csv.get(stopId);
-    const geo = MTR_GEO[stopId];
+    const fareStop = db.stopList[stopId];
+    const geo = fareStop?.location ?? MTR_GEO[stopId];
     stops.push({
       seq,
       stopId,
-      name: csvRow?.nameChi ?? stopId,
-      lat: csvRow?.lat ?? geo?.lat ?? null,
-      lng: csvRow?.lng ?? geo?.lng ?? null,
+      name: fareStop?.name?.zh ?? stopId,
+      lat: geo?.lat ?? null,
+      lng: geo?.lng ?? null,
     });
   }
   return stops;
@@ -959,22 +1032,47 @@ export async function fetchMtrRouteStops(routeStop) {
 
 export async function fetchGmbRouteStops(routeStop) {
   const url = `https://data.etagmb.gov.hk/route-stop/${routeStop.realRouteId}/${routeStop.routeSeq}`;
-  const res = await fetch(url);
+  const [res, db] = await Promise.all([
+    fetch(url),
+    ensureRouteFareDb(),
+  ]);
   const json = await res.json();
   const items = json.data?.route_stops ?? [];
   /** @type {RouteStopInfo[]} */
   const stops = [];
+  /** @type {string[]} */
+  const missingCoords = [];
+
   for (const item of items) {
     const stopId = String(item.stop_id);
-    const detail = await fetchGmbStop(stopId);
+    const fareStop = db.stopList[stopId];
+    const lat = fareStop?.location?.lat ?? null;
+    const lng = fareStop?.location?.lng ?? null;
+    if (lat == null || lng == null) missingCoords.push(stopId);
     stops.push({
       seq: item.stop_seq,
       stopId,
-      name: item.name_tc || detail.name,
-      lat: detail.lat,
-      lng: detail.lng,
+      name: item.name_tc ?? fareStop?.name?.zh ?? stopId,
+      lat,
+      lng,
     });
   }
+
+  if (missingCoords.length) {
+    const details = await Promise.all(
+      missingCoords.map((stopId) => fetchGmbStop(stopId).catch(() => null)),
+    );
+    const detailById = new Map(missingCoords.map((id, i) => [id, details[i]]));
+    for (const stop of stops) {
+      if (stop.lat != null && stop.lng != null) continue;
+      const detail = detailById.get(stop.stopId);
+      if (!detail) continue;
+      stop.lat = detail.lat;
+      stop.lng = detail.lng;
+      if (!stop.name || stop.name === stop.stopId) stop.name = detail.name;
+    }
+  }
+
   return stops.sort((a, b) => a.seq - b.seq);
 }
 
@@ -985,43 +1083,57 @@ export async function fetchSocifRouteStops(routeStop) {
   const items = json.data?.route_stops ?? [];
   /** @type {RouteStopInfo[]} */
   const stops = [];
+  /** @type {{ item: object, stopId: string, geoKey: string }[]} */
+  const needGeo = [];
+
   for (const item of items) {
     const stopId = String(item.stop_id);
-    let lat = null;
-    let lng = null;
     const geoKey = `${routeStop.route}-${routeStop.routeSeq}-${item.stop_seq}`;
     if (SOCIF_GEO[geoKey]) {
-      lat = SOCIF_GEO[geoKey].lat;
-      lng = SOCIF_GEO[geoKey].lng;
+      stops.push({
+        seq: item.stop_seq,
+        stopId,
+        name: item.name_tc,
+        lat: SOCIF_GEO[geoKey].lat,
+        lng: SOCIF_GEO[geoKey].lng,
+      });
     } else {
-      try {
-        const detail = await fetchSocifStop(stopId);
-        lat = detail.lat;
-        lng = detail.lng;
-      } catch {
-        /* ignore */
-      }
+      needGeo.push({ item, stopId, geoKey });
     }
-    stops.push({
-      seq: item.stop_seq,
-      stopId,
-      name: item.name_tc,
-      lat,
-      lng,
-    });
   }
+
+  if (needGeo.length) {
+    const details = await Promise.all(
+      needGeo.map(({ stopId }) => fetchSocifStop(stopId).catch(() => null)),
+    );
+    for (let i = 0; i < needGeo.length; i += 1) {
+      const { item, stopId } = needGeo[i];
+      const detail = details[i];
+      stops.push({
+        seq: item.stop_seq,
+        stopId,
+        name: item.name_tc,
+        lat: detail?.lat ?? null,
+        lng: detail?.lng ?? null,
+      });
+    }
+  }
+
   return stops.sort((a, b) => a.seq - b.seq);
 }
 
 export async function fetchRouteStops(routeStop) {
+  /** @type {RouteStopInfo[]} */
+  let stops;
   switch (routeStop.type) {
-    case 'kmb': return fetchKmbRouteStops(routeStop);
-    case 'nwfb': return fetchNwfbRouteStops(routeStop);
-    case 'mtr': return fetchMtrRouteStops(routeStop);
-    case 'gmb': return fetchGmbRouteStops(routeStop);
-    case 'socif': return fetchSocifRouteStops(routeStop);
+    case 'kmb': stops = await fetchKmbRouteStops(routeStop); break;
+    case 'nwfb': stops = await fetchNwfbRouteStops(routeStop); break;
+    case 'mtr': stops = await fetchMtrRouteStops(routeStop); break;
+    case 'gmb': stops = await fetchGmbRouteStops(routeStop); break;
+    case 'socif': stops = await fetchSocifRouteStops(routeStop); break;
     default: return [];
   }
+  return attachFaresToRouteStops(routeStop, stops);
 }
 
 export function routeStopId(routeStop) {
