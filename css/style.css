@@ -1292,13 +1292,18 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 
 html:has(body.route-search-page) {
   height: -webkit-fill-available;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 body.route-search-page {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
+  height: -webkit-fill-available;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   padding-bottom: 0;
   --route-search-key-height: 52px;
   --route-search-keyboard-rows: 4;
