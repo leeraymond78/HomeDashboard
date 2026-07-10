@@ -335,8 +335,8 @@ export function findLrtfeederRouteEntry(stopId, routeList = cachedDb?.routeList)
     const bound = entry.bound?.lrtfeeder;
     const allowsOutbound = bound === 'O' || bound === 'OI';
     const allowsInbound = bound === 'I' || bound === 'IO';
+    // U-prefix stops only appear on outbound routes in the fare DB.
     if (wantOutbound && allowsInbound && !allowsOutbound) continue;
-    if (!wantOutbound && allowsOutbound && !allowsInbound) continue;
 
     const serviceType = parseServiceType(entry.serviceType);
     const score = serviceType * 1000 + stops.indexOf(stopId);
