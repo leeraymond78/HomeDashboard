@@ -40,6 +40,7 @@ const CDN_ASSETS = [
 ];
 
 const CDN_HOSTS = new Set(['unpkg.com']);
+// Route API hosts serve real-time ETA data — never cache, always network-only.
 const ROUTE_API_HOSTS = new Set([
   'data.etabus.gov.hk',
   'rt.data.gov.hk',
@@ -133,7 +134,7 @@ async function networkFirstNavigation(request) {
       (await cache.match(scopeUrl('index.html'))) ||
       (await cache.match(scopeUrl('./')));
     if (cached) return cached;
-    return new Response('オフラインです。ネットワーク接続を確認してください。', {
+    return new Response('You are offline. Please check your network connection.', {
       status: 503,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });
@@ -156,10 +157,10 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin !== self.location.origin) {
     if (isCdnAsset(url)) {
-      event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE));
-    } else if (isRouteApi(url)) {
+      // CDN assets (Leaflet etc.) are versioned — safe to cache.
       event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE));
     }
+    // Route API hosts serve live ETA data — fall through to network (no SW cache).
     return;
   }
 

@@ -54,18 +54,19 @@ const refreshPending = new Set();
 
 async function loadConfig() {
   const res = await fetch('config.json');
-  if (!res.ok) throw new Error('設定ファイルを読み込めません');
+  if (!res.ok) throw new Error('Failed to load config');
   config = await res.json();
 }
 
 async function loadStopGeo() {
+  // Ensure fare DB is loaded once before processing all stops.
+  await ensureRouteFareDb();
   const firstStops = config.groups.map((g) => g.routeStops[0]).filter(Boolean);
   await Promise.all(firstStops.map(loadRouteStopGeo));
 }
 
 async function loadRouteStopGeo(rs) {
   try {
-    await ensureRouteFareDb();
     if (rs.type === 'kmb' || rs.type === 'nwfb') {
       const stopId = rs.stop;
       const stop = getFareStop(stopId);
@@ -166,26 +167,26 @@ async function showLocationPrompt(status) {
 
   prompt.hidden = false;
   if (status === 'denied') {
-    btn.textContent = '設定で位置情報を許可してください';
+    btn.textContent = 'Location access denied. Please enable in Settings.';
     return;
   }
   if (status === 'unavailable') {
     btn.disabled = false;
-    btn.textContent = '位置情報を取得できませんでした。もう一度お試しください';
+    btn.textContent = 'Could not get location. Please try again.';
     return;
   }
   if (status === 'unsupported') {
-    btn.textContent = 'この端末では位置情報を利用できません';
+    btn.textContent = 'Location is not supported on this device.';
     btn.disabled = true;
     return;
   }
   if (status === 'insecure') {
-    btn.textContent = 'HTTPS接続が必要です（http://192.168… では位置情報を利用できません）';
+    btn.textContent = 'HTTPS is required for location access.';
     btn.disabled = true;
     return;
   }
   btn.disabled = false;
-  btn.textContent = '近くの停留所を表示（位置情報を許可）';
+  btn.textContent = 'Show nearby stops (allow location)';
 }
 
 function applyLocationFromPosition(pos) {
@@ -373,14 +374,14 @@ function setScrollText(td, text, className) {
 }
 
 function etaStopsLeft(row) {
-  if (row.busAwaitingDepart || row.remark === '発車待ち') return null;
+  if (row.busAwaitingDepart || row.remark === '發車待機') return null;
   if (row.busStopsLeft != null && row.busStopsLeft > 0) return row.busStopsLeft;
   return null;
 }
 
 function remarkCellText(row) {
   const stopsLeft = etaStopsLeft(row);
-  if (stopsLeft != null) return `あと${stopsLeft}駅`;
+  if (stopsLeft != null) return `${stopsLeft} stops away`;
   return String(row.remark ?? '');
 }
 
@@ -530,7 +531,7 @@ function syncShowMoreButton(body, index, etas) {
     return;
   }
 
-  const label = `もっと見る（あと${hiddenCount}本）`;
+  const label = `Show more (${hiddenCount} more)`;
   if (!btn) {
     btn = document.createElement('button');
     btn.type = 'button';
@@ -556,14 +557,14 @@ function syncGroupBody(index) {
 
   if (!displayEtas.length) {
     if (state === 'loading') {
-      showGroupMessage(body, 'loading', '読み込み中…');
+      showGroupMessage(body, 'loading', 'Loading...');
       return;
     }
     if (state === 'error') {
-      showGroupMessage(body, 'error-msg', 'データを取得できませんでした');
+      showGroupMessage(body, 'error-msg', 'Failed to load data');
       return;
     }
-    showGroupMessage(body, 'empty', '到着予定のバスはありません');
+    showGroupMessage(body, 'empty', 'No upcoming buses');
     return;
   }
 
@@ -671,9 +672,17 @@ function setupScrollSpans(root) {
   root.querySelectorAll('.dest-scroll, .remark-scroll').forEach((el) => {
     const cell = el.closest('td');
     if (!cell || !el.textContent) return;
+    // Skip recalculation if width has not changed since last measure.
+    const prevWidth = el.dataset.cellWidth;
+    const currentWidth = String(cell.clientWidth);
+    if (prevWidth === currentWidth && el.classList.contains('scroll')) return;
+    el.dataset.cellWidth = currentWidth;
     if (el.scrollWidth > cell.clientWidth) {
       el.classList.add('scroll');
       el.style.setProperty('--scroll-offset', `${cell.clientWidth - el.scrollWidth}px`);
+    } else {
+      el.classList.remove('scroll');
+      el.style.removeProperty('--scroll-offset');
     }
   });
 }
@@ -732,7 +741,9 @@ async function refreshGroup(index, { silent = false } = {}) {
         groupState.set(index, 'ok');
         lastRefresh = new Date();
         updateGroup(index);
-        await enrichRouteStopEtas(index, rs, gen);
+        // Fire-and-forget: enrichment runs in the background and does not
+        // block the main ETA render or delay subsequent route stops.
+        enrichRouteStopEtas(index, rs, gen).catch(() => {});
       } catch {
         hadError = true;
       }
@@ -764,6 +775,12 @@ function startRefreshTimer() {
     if (document.hidden) return;
     refreshOpenGroups();
   }, REFRESH_INTERVAL_MS);
+
+  // When the page becomes visible again, refresh immediately instead of
+  // waiting up to REFRESH_INTERVAL_MS for the next tick.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshOpenGroups();
+  });
 }
 
 function updateRefreshTimer() {
