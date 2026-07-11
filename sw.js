@@ -134,7 +134,7 @@ async function networkFirstNavigation(request) {
       (await cache.match(scopeUrl('index.html'))) ||
       (await cache.match(scopeUrl('./')));
     if (cached) return cached;
-    return new Response('You are offline. Please check your network connection.', {
+    return new Response('オフラインです。ネットワーク接続を確認してください。', {
       status: 503,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });

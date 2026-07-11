@@ -54,7 +54,7 @@ const refreshPending = new Set();
 
 async function loadConfig() {
   const res = await fetch('config.json');
-  if (!res.ok) throw new Error('Failed to load config');
+  if (!res.ok) throw new Error('設定ファイルを読み込めません');
   config = await res.json();
 }
 
@@ -167,26 +167,26 @@ async function showLocationPrompt(status) {
 
   prompt.hidden = false;
   if (status === 'denied') {
-    btn.textContent = 'Location access denied. Please enable in Settings.';
+    btn.textContent = '設定で位置情報を許可してください';
     return;
   }
   if (status === 'unavailable') {
     btn.disabled = false;
-    btn.textContent = 'Could not get location. Please try again.';
+    btn.textContent = '位置情報を取得できませんでした。もう一度お試しください';
     return;
   }
   if (status === 'unsupported') {
-    btn.textContent = 'Location is not supported on this device.';
+    btn.textContent = 'この端末では位置情報を利用できません';
     btn.disabled = true;
     return;
   }
   if (status === 'insecure') {
-    btn.textContent = 'HTTPS is required for location access.';
+    btn.textContent = 'HTTPS接続が必要です（http://192.168… では位置情報を利用できません）';
     btn.disabled = true;
     return;
   }
   btn.disabled = false;
-  btn.textContent = 'Show nearby stops (allow location)';
+  btn.textContent = '近くの停留所を表示（位置情報を許可）';
 }
 
 function applyLocationFromPosition(pos) {
@@ -210,7 +210,6 @@ function setupLocationPrompt() {
       showLocationPrompt(block);
       return;
     }
-    // Call getCurrentPosition synchronously from the tap handler (required on iOS).
     requestUserPosition().then((pos) => {
       if (applyLocationFromPosition(pos)) return;
       const err = getLastGeoError();
@@ -374,14 +373,14 @@ function setScrollText(td, text, className) {
 }
 
 function etaStopsLeft(row) {
-  if (row.busAwaitingDepart || row.remark === '發車待機') return null;
+  if (row.busAwaitingDepart || row.remark === '発車待ち') return null;
   if (row.busStopsLeft != null && row.busStopsLeft > 0) return row.busStopsLeft;
   return null;
 }
 
 function remarkCellText(row) {
   const stopsLeft = etaStopsLeft(row);
-  if (stopsLeft != null) return `${stopsLeft} stops away`;
+  if (stopsLeft != null) return `あと${stopsLeft}駅`;
   return String(row.remark ?? '');
 }
 
@@ -531,7 +530,7 @@ function syncShowMoreButton(body, index, etas) {
     return;
   }
 
-  const label = `Show more (${hiddenCount} more)`;
+  const label = `もっと見る（あと${hiddenCount}本）`;
   if (!btn) {
     btn = document.createElement('button');
     btn.type = 'button';
@@ -557,14 +556,14 @@ function syncGroupBody(index) {
 
   if (!displayEtas.length) {
     if (state === 'loading') {
-      showGroupMessage(body, 'loading', 'Loading...');
+      showGroupMessage(body, 'loading', '読み込み中…');
       return;
     }
     if (state === 'error') {
-      showGroupMessage(body, 'error-msg', 'Failed to load data');
+      showGroupMessage(body, 'error-msg', 'データを取得できませんでした');
       return;
     }
-    showGroupMessage(body, 'empty', 'No upcoming buses');
+    showGroupMessage(body, 'empty', '到着予定のバスはありません');
     return;
   }
 
