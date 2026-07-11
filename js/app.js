@@ -59,13 +59,14 @@ async function loadConfig() {
 }
 
 async function loadStopGeo() {
+  // Ensure fare DB is loaded once before processing all stops.
+  await ensureRouteFareDb();
   const firstStops = config.groups.map((g) => g.routeStops[0]).filter(Boolean);
   await Promise.all(firstStops.map(loadRouteStopGeo));
 }
 
 async function loadRouteStopGeo(rs) {
   try {
-    await ensureRouteFareDb();
     if (rs.type === 'kmb' || rs.type === 'nwfb') {
       const stopId = rs.stop;
       const stop = getFareStop(stopId);
@@ -209,7 +210,6 @@ function setupLocationPrompt() {
       showLocationPrompt(block);
       return;
     }
-    // Call getCurrentPosition synchronously from the tap handler (required on iOS).
     requestUserPosition().then((pos) => {
       if (applyLocationFromPosition(pos)) return;
       const err = getLastGeoError();
@@ -671,9 +671,17 @@ function setupScrollSpans(root) {
   root.querySelectorAll('.dest-scroll, .remark-scroll').forEach((el) => {
     const cell = el.closest('td');
     if (!cell || !el.textContent) return;
+    // Skip recalculation if width has not changed since last measure.
+    const prevWidth = el.dataset.cellWidth;
+    const currentWidth = String(cell.clientWidth);
+    if (prevWidth === currentWidth && el.classList.contains('scroll')) return;
+    el.dataset.cellWidth = currentWidth;
     if (el.scrollWidth > cell.clientWidth) {
       el.classList.add('scroll');
       el.style.setProperty('--scroll-offset', `${cell.clientWidth - el.scrollWidth}px`);
+    } else {
+      el.classList.remove('scroll');
+      el.style.removeProperty('--scroll-offset');
     }
   });
 }
@@ -732,7 +740,9 @@ async function refreshGroup(index, { silent = false } = {}) {
         groupState.set(index, 'ok');
         lastRefresh = new Date();
         updateGroup(index);
-        await enrichRouteStopEtas(index, rs, gen);
+        // Fire-and-forget: enrichment runs in the background and does not
+        // block the main ETA render or delay subsequent route stops.
+        enrichRouteStopEtas(index, rs, gen).catch(() => {});
       } catch {
         hadError = true;
       }
@@ -764,6 +774,12 @@ function startRefreshTimer() {
     if (document.hidden) return;
     refreshOpenGroups();
   }, REFRESH_INTERVAL_MS);
+
+  // When the page becomes visible again, refresh immediately instead of
+  // waiting up to REFRESH_INTERVAL_MS for the next tick.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshOpenGroups();
+  });
 }
 
 function updateRefreshTimer() {
