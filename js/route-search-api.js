@@ -23,10 +23,17 @@
 
 /** @typedef {{ phase: string, loaded: number, total: number }} RouteSearchProgress */
 
-import { ensureRouteFareDb, gmbRouteSeqFromBound } from './route-fare-db.js';
+import {
+  ensureRouteFareDb,
+  findCtbRouteEntry,
+  findGmbRouteEntry,
+  findKmbRouteEntry,
+  findLrtfeederRouteEntry,
+  gmbRouteSeqFromBound,
+} from './route-fare-db.js';
 import { pickLocalized, t } from './locale.js';
 
-const CACHE_VERSION = 9;
+const CACHE_VERSION = 10;
 const CACHE_KEY = 'homedashboard-route-search-v9';
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SUPPORTED_FARE_CO = new Set(['kmb', 'ctb', 'gmb', 'lrtfeeder']);
@@ -127,7 +134,7 @@ function buildMatchFromFareEntry(entry, co) {
   const origEn = entry.orig?.en ?? '';
   const destZh = entry.dest?.zh ?? '';
   const destEn = entry.dest?.en ?? '';
-  const label = t('search.label', { route, dest: pickLocalized(destZh, destEn) });
+  const label = `${route} 往${destZh}`;
 
   const base = { orig: origZh, origEn, dest: destZh, destEn, label };
 
@@ -222,6 +229,58 @@ async function loadFareListIndex() {
   return index;
 }
 
+function indexNeedsLocaleHydration(kmb, nwfb, mtr, gmb) {
+  return [...kmb, ...nwfb, ...mtr, ...gmb].some((match) => !('destEn' in match));
+}
+
+/** @param {RouteSearchMatch} match @param {Record<string, unknown>} routeList */
+function fareEntryForMatch(match, routeList) {
+  switch (match.type) {
+    case 'kmb':
+      return findKmbRouteEntry(match.route, match.bound, match.service_type ?? 1, routeList);
+    case 'nwfb':
+      return findCtbRouteEntry(match.route, match.dir, routeList);
+    case 'mtr':
+      return match.stopId ? findLrtfeederRouteEntry(match.stopId, routeList) : null;
+    case 'gmb':
+      return findGmbRouteEntry(match.realRouteId, match.routeSeq ?? 1, routeList);
+    default:
+      return null;
+  }
+}
+
+/** @param {RouteSearchMatch} match @param {Record<string, unknown>} routeList */
+function hydrateMatchLocales(match, routeList) {
+  if ('destEn' in match) return match;
+  const entry = fareEntryForMatch(match, routeList);
+  if (!entry) return match;
+  return {
+    ...match,
+    orig: entry.orig?.zh ?? match.orig ?? '',
+    origEn: entry.orig?.en ?? '',
+    dest: entry.dest?.zh ?? match.dest ?? '',
+    destEn: entry.dest?.en ?? '',
+  };
+}
+
+/** @param {RouteSearchMatch[]} list @param {Record<string, unknown>} routeList */
+function hydrateMatchList(list, routeList) {
+  return list.map((match) => hydrateMatchLocales(match, routeList));
+}
+
+async function hydrateIndexLocales(kmb, nwfb, mtr, gmb) {
+  if (!indexNeedsLocaleHydration(kmb, nwfb, mtr, gmb)) {
+    return { kmb, nwfb, mtr, gmb };
+  }
+  const db = await ensureRouteFareDb();
+  return {
+    kmb: hydrateMatchList(kmb, db.routeList),
+    nwfb: hydrateMatchList(nwfb, db.routeList),
+    mtr: hydrateMatchList(mtr, db.routeList),
+    gmb: hydrateMatchList(gmb, db.routeList),
+  };
+}
+
 function readCache({ allowStale = false } = {}) {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -280,6 +339,14 @@ async function fetchFreshIndex() {
   writeCache(fare.kmb, fare.nwfb, fare.mtr, fare.gmb);
 }
 
+async function applyCachedIndex(kmb, nwfb, mtr, gmb, { rewriteCache = false } = {}) {
+  const hydrated = await hydrateIndexLocales(kmb, nwfb, mtr, gmb);
+  applyIndex(hydrated.kmb, hydrated.nwfb, hydrated.mtr, hydrated.gmb);
+  if (rewriteCache || indexNeedsLocaleHydration(kmb, nwfb, mtr, gmb)) {
+    writeCache(hydrated.kmb, hydrated.nwfb, hydrated.mtr, hydrated.gmb);
+  }
+}
+
 async function refreshIndexInBackground() {
   try {
     await fetchFreshIndex();
@@ -293,7 +360,7 @@ async function loadIndex() {
   const cached = readCache({ allowStale: true });
 
   if (cached) {
-    applyIndex(cached.kmb, cached.nwfb, cached.mtr, cached.gmb);
+    await applyCachedIndex(cached.kmb, cached.nwfb, cached.mtr, cached.gmb);
     reportProgress('cache', 1, 1);
     if (cached.stale) refreshIndexInBackground();
     return;

@@ -113,7 +113,7 @@ function operatorLabel(type) {
 function formatMatchDest(match) {
   const dest = pickLocalized(match.dest, match.destEn);
   if (dest) return t('search.dest', { dest });
-  return match.label.replace(/^[^\s]+\s*/, '');
+  return t('search.label', { route: match.routeId, dest: match.dest ?? '' });
 }
 
 function isSpecialService(match) {

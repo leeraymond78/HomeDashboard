@@ -1266,7 +1266,7 @@ function renderEtaList(etas, { loading = false } = {}) {
     <div class="bus-eta-item ${eta.etaClass}">
       <span class="bus-eta-mins">${formatEtaMinsLabel(eta)}</span>
       ${eta.remark ? `<span class="bus-eta-remark">${escapeHtml(eta.remark)}</span>` : ''}
-      ${arrival.show ? `<span class="bus-eta-location">${escapeHtml(arrival.location ?? t('bus.inTransit'))}</span>` : ''}
+      ${arrival.show ? `<span class="bus-eta-location"><span class="bus-eta-location-scroll">${escapeHtml(arrival.location ?? t('bus.inTransit'))}</span></span>` : ''}
       ${arrival.stopsLeft != null ? `<span class="bus-eta-stops-left" title="${escapeAttr(t('eta.stopsLeft', { count: arrival.stopsLeft }))}">${escapeHtml(t('eta.stopsLeft', { count: arrival.stopsLeft }))}</span>` : ''}
       <span class="bus-eta-time">${escapeHtml(eta.time)}</span>
     </div>`;
@@ -1313,9 +1313,25 @@ function scheduleBusStopBodyClear(section) {
   panel.addEventListener('transitionend', onEnd);
 }
 
+function setupBusEtaLocationScroll(root) {
+  root.querySelectorAll('.bus-eta-location').forEach((cell) => {
+    const el = cell.querySelector('.bus-eta-location-scroll');
+    if (!el?.textContent) return;
+    el.classList.remove('scroll');
+    el.style.removeProperty('--scroll-offset');
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (el.scrollWidth > cell.clientWidth) {
+      el.classList.add('scroll');
+      el.style.setProperty('--scroll-offset', `${cell.clientWidth - el.scrollWidth}px`);
+    }
+  });
+}
+
 function updateStopEtaBody(section, etas) {
   const inner = section?.querySelector('.bus-stop-body-inner');
-  if (inner) inner.innerHTML = renderEtaList(etas);
+  if (!inner) return;
+  inner.innerHTML = renderEtaList(etas);
+  setupBusEtaLocationScroll(inner);
 }
 
 function formatFare(value) {
@@ -1392,6 +1408,7 @@ function renderStops({ currentIdx, closestIdx }) {
   container.querySelectorAll('.bus-stop').forEach((section) => {
     syncBusStopOpen(section, expandedStops.has(section.dataset.stopKey));
   });
+  setupBusEtaLocationScroll(container);
 }
 
 function bindStopClicks() {

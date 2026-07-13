@@ -291,7 +291,7 @@ export function findCtbRouteEntry(route, dir, routeList = cachedDb?.routeList) {
  * @param {Record<string, unknown>} [routeList]
  * @returns {Record<string, unknown> | null}
  */
-function findGmbRouteEntry(realRouteId, routeSeq, routeList = cachedDb?.routeList) {
+export function findGmbRouteEntry(realRouteId, routeSeq, routeList = cachedDb?.routeList) {
   if (!routeList || realRouteId == null) return null;
 
   for (const entry of Object.values(routeList)) {

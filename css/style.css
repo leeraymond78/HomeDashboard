@@ -1310,11 +1310,18 @@ body.bus-detail-page .bus-stop:last-child {
 .bus-eta-location {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
   color: var(--white-70);
   font-size: 12px;
+}
+
+.bus-eta-location-scroll {
+  display: inline-block;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.bus-eta-location-scroll.scroll {
+  animation: dest-bounce 6s ease-in-out infinite;
 }
 
 .bus-eta-stops-left {
