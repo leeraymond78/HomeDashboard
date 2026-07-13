@@ -3,6 +3,7 @@ import { distanceM, formatDistance, bootstrapLocation, geolocationBlockReason, g
 import { escapeHtml } from './utils.js';
 import { initPullToRefresh } from './pull-to-refresh.js';
 import { initDashboardThemeToggle } from './theme.js';
+import { applyStaticI18n, groupTitle, initLocale, initLocaleToggle, isAwaitingDepartRemark, LOCALE_CHANGE, t } from './locale.js';
 import { ensureRouteSearchIndex } from './route-search-api.js';
 import { ensureRouteFareDb, getFareStop } from './route-fare-db.js';
 import {
@@ -54,7 +55,7 @@ const refreshPending = new Set();
 
 async function loadConfig() {
   const res = await fetch('config.json');
-  if (!res.ok) throw new Error('設定ファイルを読み込めません');
+  if (!res.ok) throw new Error(t('error.config'));
   config = await res.json();
 }
 
@@ -167,26 +168,26 @@ async function showLocationPrompt(status) {
 
   prompt.hidden = false;
   if (status === 'denied') {
-    btn.textContent = '設定で位置情報を許可してください';
+    btn.textContent = t('location.denied');
     return;
   }
   if (status === 'unavailable') {
     btn.disabled = false;
-    btn.textContent = '位置情報を取得できませんでした。もう一度お試しください';
+    btn.textContent = t('location.unavailable');
     return;
   }
   if (status === 'unsupported') {
-    btn.textContent = 'この端末では位置情報を利用できません';
+    btn.textContent = t('location.unsupported');
     btn.disabled = true;
     return;
   }
   if (status === 'insecure') {
-    btn.textContent = 'HTTPS接続が必要です（http://192.168… では位置情報を利用できません）';
+    btn.textContent = t('location.insecure');
     btn.disabled = true;
     return;
   }
   btn.disabled = false;
-  btn.textContent = '近くの停留所を表示（位置情報を許可）';
+  btn.textContent = t('location.prompt');
 }
 
 function applyLocationFromPosition(pos) {
@@ -373,14 +374,14 @@ function setScrollText(td, text, className) {
 }
 
 function etaStopsLeft(row) {
-  if (row.busAwaitingDepart || row.remark === '発車待ち') return null;
+  if (row.busAwaitingDepart || isAwaitingDepartRemark(row.remark)) return null;
   if (row.busStopsLeft != null && row.busStopsLeft > 0) return row.busStopsLeft;
   return null;
 }
 
 function remarkCellText(row) {
   const stopsLeft = etaStopsLeft(row);
-  if (stopsLeft != null) return `あと${stopsLeft}駅`;
+  if (stopsLeft != null) return t('eta.stopsLeft', { count: stopsLeft });
   return String(row.remark ?? '');
 }
 
@@ -530,7 +531,7 @@ function syncShowMoreButton(body, index, etas) {
     return;
   }
 
-  const label = `もっと見る（あと${hiddenCount}本）`;
+  const label = t('showMore', { count: hiddenCount });
   if (!btn) {
     btn = document.createElement('button');
     btn.type = 'button';
@@ -556,14 +557,14 @@ function syncGroupBody(index) {
 
   if (!displayEtas.length) {
     if (state === 'loading') {
-      showGroupMessage(body, 'loading', '読み込み中…');
+      showGroupMessage(body, 'loading', t('loading'));
       return;
     }
     if (state === 'error') {
-      showGroupMessage(body, 'error-msg', 'データを取得できませんでした');
+      showGroupMessage(body, 'error-msg', t('error.data'));
       return;
     }
-    showGroupMessage(body, 'empty', '到着予定のバスはありません');
+    showGroupMessage(body, 'empty', t('empty.etas'));
     return;
   }
 
@@ -590,7 +591,7 @@ function buildGroupsShell() {
     .map((group, i) => `
       <section class="group" data-index="${i}">
         <button class="group-header" type="button" aria-expanded="false">
-          <span class="group-title">${escapeHtml(group.title)}</span>
+          <span class="group-title">${escapeHtml(groupTitle(group.title))}</span>
           <span class="group-trailing">
             <span class="group-distance" hidden></span>
             <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -825,7 +826,23 @@ async function loadBuildStamp() {
   }
 }
 
+async function onLocaleChange() {
+  applyStaticI18n();
+  groupEtas.clear();
+  groupState.clear();
+  renderGroups();
+  await loadWeatherSection();
+  await refreshOpenGroups({ silent: false });
+  const block = geolocationBlockReason();
+  if (block || !getUserPosition()) {
+    await showLocationPrompt(block ?? 'prompt');
+  }
+}
+
 async function init() {
+  initLocale();
+  initLocaleToggle();
+  applyStaticI18n();
   initDashboardThemeToggle();
   loadBuildStamp();
   try {
@@ -848,6 +865,7 @@ async function init() {
     updateRefreshTimer();
 
     document.getElementById('refresh-btn').addEventListener('click', () => refreshAll({ spinButton: true }));
+    window.addEventListener(LOCALE_CHANGE, () => { void onLocaleChange(); });
     initPullToRefresh(() => refreshAll());
     const prefetchSearch = () => ensureRouteSearchIndex().catch(() => {});
     if ('requestIdleCallback' in window) {

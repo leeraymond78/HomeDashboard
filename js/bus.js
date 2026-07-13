@@ -1,12 +1,25 @@
 import { distanceM, bootstrapLocation, geolocationBlockReason, getUserPosition, requestUserPosition } from './location.js';
 import { escapeAttr, escapeHtml } from './utils.js';
 import {
+  applyStaticI18n,
+  initLocale,
+  initLocaleToggle,
+  isAwaitingDepartRemark,
+  isEnglish,
+  LOCALE_CHANGE,
+  pickLocalized,
+  t,
+} from './locale.js';
+import { initDashboardThemeToggle } from './theme.js';
+import {
   clearRouteWideEtaCache,
   enrichEtasWithBusLocation,
   fetchEtas,
   fetchRouteStops,
   fetchSocifRoute,
   fetchSocifWeekdaySchedule,
+  getSocifDirection,
+  socifDestFromDirection,
   formatTime,
   operatorClass,
   parseRouteStop,
@@ -20,20 +33,33 @@ const STOP_MAP_ZOOM = 15;
 const LANDSD_MAP_API = 'https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz';
 const LANDSD_ATTRIBUTION =
   '<img src="https://www.landsd.gov.hk/images/landsd_logo.svg" alt="" width="14" height="14"> Map from <a href="https://www.landsd.gov.hk/">Lands Department</a>';
-const TD_HEADWAY_BASE_URL = 'https://static.data.gov.hk/td/pt-headway-tc';
-const TD_HEADWAY_URLS = {
-  routes: `${TD_HEADWAY_BASE_URL}/routes.txt`,
-  trips: `${TD_HEADWAY_BASE_URL}/trips.txt`,
-  frequencies: `${TD_HEADWAY_BASE_URL}/frequencies.txt`,
-  calendar: `${TD_HEADWAY_BASE_URL}/calendar.txt`,
-  calendarDates: `${TD_HEADWAY_BASE_URL}/calendar_dates.txt`,
-};
+const TD_HEADWAY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function tdHeadwayBaseUrl() {
+  return isEnglish()
+    ? 'https://static.data.gov.hk/td/pt-headway-en'
+    : 'https://static.data.gov.hk/td/pt-headway-tc';
+}
+
+function tdHeadwayUrls() {
+  const base = tdHeadwayBaseUrl();
+  return {
+    routes: `${base}/routes.txt`,
+    trips: `${base}/trips.txt`,
+    frequencies: `${base}/frequencies.txt`,
+    calendar: `${base}/calendar.txt`,
+    calendarDates: `${base}/calendar_dates.txt`,
+  };
+}
+
+function tdHeadwayCacheName() {
+  return isEnglish() ? 'td-headway-en-v1' : 'td-headway-tc-v1';
+}
+
 const TD_OPERATOR_AGENCIES = {
   kmb: new Set(['KMB', 'KMB+CTB']),
   nwfb: new Set(['CTB', 'KMB+CTB', 'LWB+CTB']),
 };
-const TD_HEADWAY_CACHE_NAME = 'td-headway-tc-v1';
-const TD_HEADWAY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** @type {import('./transit-api.js').RouteStopConfig | null} */
 let routeStop = null;
@@ -222,7 +248,7 @@ async function loadTdHeadwayData() {
 async function readTdHeadwayCache(url) {
   if (!('caches' in globalThis)) return null;
   try {
-    const cache = await caches.open(TD_HEADWAY_CACHE_NAME);
+    const cache = await caches.open(tdHeadwayCacheName());
     const cached = await cache.match(url);
     if (!cached) return null;
     const cachedAt = Number(cached.headers.get('x-cached-at'));
@@ -239,7 +265,7 @@ async function readTdHeadwayCache(url) {
 async function writeTdHeadwayCache(url, text) {
   if (!('caches' in globalThis)) return;
   try {
-    const cache = await caches.open(TD_HEADWAY_CACHE_NAME);
+    const cache = await caches.open(tdHeadwayCacheName());
     const headers = new Headers({
       'Content-Type': 'text/plain',
       'x-cached-at': String(Date.now()),
@@ -256,7 +282,7 @@ async function fetchTdHeadwayText(url) {
       const cached = await readTdHeadwayCache(url);
       if (cached != null) return cached;
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`班次データを読み込めません: ${url}`);
+      if (!res.ok) throw new Error(t('bus.timetable.loadError', { url }));
       const text = await res.text();
       await writeTdHeadwayCache(url, text);
       return text;
@@ -310,7 +336,7 @@ function parseCsv(text) {
 }
 
 async function readTdCsv(name) {
-  const text = await fetchTdHeadwayText(TD_HEADWAY_URLS[name]);
+  const text = await fetchTdHeadwayText(tdHeadwayUrls()[name]);
   return parseCsv(text);
 }
 
@@ -364,7 +390,7 @@ function parseCsvFiltered(text, predicate) {
 }
 
 async function readTdCsvFiltered(name, predicate) {
-  const text = await fetchTdHeadwayText(TD_HEADWAY_URLS[name]);
+  const text = await fetchTdHeadwayText(tdHeadwayUrls()[name]);
   return parseCsvFiltered(text, predicate);
 }
 
@@ -489,10 +515,14 @@ async function buildSocifRouteData() {
     fetchSocifWeekdaySchedule(routeStop.route, weekdayIndex),
   ]);
   const direction = routeData?.directions?.find((item) => item.route_seq === routeStop.routeSeq) ?? null;
+  const orig = pickLocalized(direction?.orig_tc, direction?.orig_en);
+  const dest = socifDestFromDirection(direction, '');
+  const routeLongName = orig && dest ? `${orig} - ${dest}` : '';
   const todaySchedule = (scheduleRows ?? []).find((item) => item.route_seq === routeStop.routeSeq);
   return {
     timetableKind: 'departure',
     hasTimetable: Boolean(direction?.headways?.length || todaySchedule?.schedules?.length),
+    routeLongName,
     rows: (todaySchedule?.schedules ?? []).map((value) => ({ kind: 'departure', time: value })),
   };
 }
@@ -568,11 +598,13 @@ function hasWeekdayService(service) {
   return service.monday || service.tuesday || service.wednesday || service.thursday || service.friday;
 }
 
-const TIMETABLE_SECTION_DEFS = [
-  { id: 'weekday', label: '平日' },
-  { id: 'saturday', label: '土曜' },
-  { id: 'sundayHoliday', label: '日曜・祝日' },
-];
+function timetableSectionDefs() {
+  return [
+    { id: 'weekday', label: t('bus.timetable.weekday') },
+    { id: 'saturday', label: t('bus.timetable.saturday') },
+    { id: 'sundayHoliday', label: t('bus.timetable.sundayHoliday') },
+  ];
+}
 
 function serviceBelongsToSection(service, sectionId) {
   if (!service) return false;
@@ -615,17 +647,22 @@ function serviceGroupLabel(service) {
   }
   if (service.monday && service.tuesday && service.wednesday && service.thursday
     && !service.friday && !service.saturday && !service.sunday) {
-    return '月〜木曜';
+    return t('bus.timetable.monThu');
   }
   if (service.friday && !service.monday && !service.tuesday && !service.wednesday && !service.thursday
     && !service.saturday && !service.sunday) {
-    return '金曜';
+    return t('bus.timetable.friday');
   }
   if (service.saturday && !service.sunday && !hasWeekdayService(service)) return '';
   if (service.sunday && !service.saturday && !hasWeekdayService(service)) return '';
   const specs = [
-    ['monday', '月'], ['tuesday', '火'], ['wednesday', '水'], ['thursday', '木'],
-    ['friday', '金'], ['saturday', '土'], ['sunday', '日'],
+    ['monday', t('bus.timetable.day.mon')],
+    ['tuesday', t('bus.timetable.day.tue')],
+    ['wednesday', t('bus.timetable.day.wed')],
+    ['thursday', t('bus.timetable.day.thu')],
+    ['friday', t('bus.timetable.day.fri')],
+    ['saturday', t('bus.timetable.day.sat')],
+    ['sunday', t('bus.timetable.day.sun')],
   ];
   return specs.filter(([key]) => service[key]).map(([, label]) => label).join('・');
 }
@@ -651,7 +688,7 @@ function timetableSections(variant) {
     if (!rows.length) return [];
     return [{ id: 'today', label: timetableDayLabel(), groups: [{ label: '', rows }] }];
   }
-  return TIMETABLE_SECTION_DEFS
+  return timetableSectionDefs()
     .map(({ id, label }) => {
       const groups = timetableGroupsForSection(variant, id);
       if (!groups.length) return null;
@@ -713,7 +750,7 @@ function renderTimetableRow(row, context) {
   const minutes = Math.round(row.headwaySecs / 60);
   return `<div class="bus-timetable-row${cls}">
     <span class="bus-timetable-range">${formatScheduleTime(row.startTime)} - ${formatScheduleTime(row.endTime)}</span>
-    <span class="bus-timetable-headway">${minutes}分鐘</span>
+    <span class="bus-timetable-headway">${t('bus.headwayMinutes', { count: minutes })}</span>
   </div>`;
 }
 
@@ -770,9 +807,9 @@ function formatScheduleTime(value) {
 
 function timetableDayLabel() {
   const day = new Date().getDay();
-  if (day === 6) return '土曜';
-  if (day === 0) return '日祝';
-  return '平日';
+  if (day === 6) return t('bus.timetable.satShort');
+  if (day === 0) return t('bus.timetable.sunHolidayShort');
+  return t('bus.timetable.weekday');
 }
 
 function variantHasTimetableData(variant) {
@@ -797,7 +834,7 @@ function renderTimetablePanel() {
     if (dialog.open) dialog.close();
   }
   button.hidden = !hasRouteTimetable;
-  button.textContent = '時刻表';
+  button.textContent = t('bus.timetable');
   button.setAttribute('aria-expanded', String(dialog.open));
   timetableVisible = dialog.open;
   if (!hasRouteTimetable) return;
@@ -807,7 +844,7 @@ function renderTimetablePanel() {
   subtitle.hidden = !routeName;
 
   if (!sections.length) {
-    body.innerHTML = '<div class="bus-stop-empty">時刻表データがありません</div>';
+    body.innerHTML = `<div class="bus-stop-empty">${escapeHtml(t('bus.noTimetable'))}</div>`;
     return;
   }
   body.innerHTML = renderTimetableSectionsHtml(sections);
@@ -863,7 +900,7 @@ async function reverseRouteStopConfig() {
         ...routeStop,
         routeId: routeStop.routeId ?? routeData?.route_code ?? String(routeStop.route),
         routeSeq: reversed.route_seq,
-        dest: reversed.dest_tc ?? routeStop.dest,
+        dest: socifDestFromDirection(reversed, reversed.dest_tc ?? routeStop.dest),
       };
     }
     default:
@@ -1061,25 +1098,25 @@ function syncExpandedMarkerTooltip() {
 }
 
 function formatBusArrivalLocation(eta) {
-  if (eta.busAwaitingDepart || eta.remark === '発車待ち') {
-    return { show: true, location: '発車待ち', stopsLeft: null };
+  if (eta.busAwaitingDepart || isAwaitingDepartRemark(eta.remark)) {
+    return { show: true, location: t('remark.awaitingDepart'), stopsLeft: null };
   }
   if (!eta.busStopName) return { show: false, location: null, stopsLeft: null };
   const stopsLeft = eta.busStopsLeft != null && eta.busStopsLeft > 0 ? eta.busStopsLeft : null;
-  return { show: true, location: `${eta.busStopName}へ到着`, stopsLeft };
+  return { show: true, location: t('bus.arrivingAt', { stop: eta.busStopName }), stopsLeft };
 }
 
 function formatBusArrivalLabel(eta) {
   const { location, stopsLeft } = formatBusArrivalLocation(eta);
-  if (!location) return '走行中';
+  if (!location) return t('bus.inTransit');
   if (stopsLeft == null) return location;
-  return `${location} · ${stopsLeft}駅`;
+  return `${location} · ${t('eta.stopsLeft', { count: stopsLeft })}`;
 }
 
 function busLocationIcon(etaClass, index) {
   return L.divIcon({
     className: 'bus-vehicle-marker-wrap',
-    html: `<span class="bus-vehicle-marker ${etaClass}" aria-label="バス${index + 1}">
+    html: `<span class="bus-vehicle-marker ${etaClass}" aria-label="${escapeAttr(t('bus.vehicle', { index: index + 1 }))}">
       <svg class="bus-vehicle-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-2.21-1.79-4-4-4H8C5.79 2 4 3.79 4 6v10zm2-10h12v9H6V6z"/>
         <circle cx="7.5" cy="16.5" r="1.4"/>
@@ -1211,17 +1248,17 @@ function updateMap({ currentIdx, closestIdx }) {
 
 function formatEtaMinsLabel(eta) {
   const diffMins = (eta.etaTime - Date.now()) / 60000;
-  if (diffMins > 0) return `${Math.round(diffMins)}分`;
-  if (diffMins <= -1) return '遅刻';
-  return '到着';
+  if (diffMins > 0) return t('bus.minutes', { count: Math.round(diffMins) });
+  if (diffMins <= -1) return t('bus.late');
+  return t('bus.arrived');
 }
 
 function renderEtaList(etas, { loading = false } = {}) {
   if (loading) {
-    return '<div class="bus-stop-empty">読み込み中…</div>';
+    return `<div class="bus-stop-empty">${escapeHtml(t('loading'))}</div>`;
   }
   if (!etas.length) {
-    return '<div class="bus-stop-empty">情報なし</div>';
+    return `<div class="bus-stop-empty">${escapeHtml(t('bus.noInfo'))}</div>`;
   }
   return etas.map((eta) => {
     const arrival = formatBusArrivalLocation(eta);
@@ -1229,8 +1266,8 @@ function renderEtaList(etas, { loading = false } = {}) {
     <div class="bus-eta-item ${eta.etaClass}">
       <span class="bus-eta-mins">${formatEtaMinsLabel(eta)}</span>
       ${eta.remark ? `<span class="bus-eta-remark">${escapeHtml(eta.remark)}</span>` : ''}
-      ${arrival.show ? `<span class="bus-eta-location">${escapeHtml(arrival.location ?? '走行中')}</span>` : ''}
-      ${arrival.stopsLeft != null ? `<span class="bus-eta-stops-left" title="あと${arrival.stopsLeft}駅">${arrival.stopsLeft}駅</span>` : ''}
+      ${arrival.show ? `<span class="bus-eta-location">${escapeHtml(arrival.location ?? t('bus.inTransit'))}</span>` : ''}
+      ${arrival.stopsLeft != null ? `<span class="bus-eta-stops-left" title="${escapeAttr(t('eta.stopsLeft', { count: arrival.stopsLeft }))}">${escapeHtml(t('eta.stopsLeft', { count: arrival.stopsLeft }))}</span>` : ''}
       <span class="bus-eta-time">${escapeHtml(eta.time)}</span>
     </div>`;
   }).join('');
@@ -1292,7 +1329,7 @@ function stopFareLabel(stop) {
   const weekday = stop.fare ? formatFare(stop.fare) : '';
   if (stop.fareHoliday && stop.fareHoliday !== stop.fare) {
     const holiday = formatFare(stop.fareHoliday);
-    return weekday ? `${weekday} / 假日 ${holiday}` : `假日 ${holiday}`;
+    return weekday ? `${weekday} / ${t('bus.fareHoliday', { amount: holiday })}` : t('bus.fareHoliday', { amount: holiday });
   }
   return weekday;
 }
@@ -1300,7 +1337,7 @@ function stopFareLabel(stop) {
 function renderStops({ currentIdx, closestIdx }) {
   const container = document.getElementById('bus-stops');
   if (!routeStops.length) {
-    container.innerHTML = '<div class="empty">停留所データがありません</div>';
+    container.innerHTML = `<div class="empty">${escapeHtml(t('bus.noStops'))}</div>`;
     return;
   }
 
@@ -1320,9 +1357,9 @@ function renderStops({ currentIdx, closestIdx }) {
     ].filter(Boolean).join(' ');
 
     const badges = [];
-    if (isCurrent) badges.push('<span class="bus-stop-badge bus-stop-badge-current">現在</span>');
-    if (isClosest) badges.push('<span class="bus-stop-badge bus-stop-badge-closest">最寄り</span>');
-    else if (isNext) badges.push('<span class="bus-stop-badge bus-stop-badge-next">つぎは</span>');
+    if (isCurrent) badges.push(`<span class="bus-stop-badge bus-stop-badge-current">${escapeHtml(t('bus.badge.current'))}</span>`);
+    if (isClosest) badges.push(`<span class="bus-stop-badge bus-stop-badge-closest">${escapeHtml(t('bus.badge.closest'))}</span>`);
+    else if (isNext) badges.push(`<span class="bus-stop-badge bus-stop-badge-next">${escapeHtml(t('bus.badge.next'))}</span>`);
 
     const markerClass = isCurrent
       ? 'bus-stop-num-current'
@@ -1493,7 +1530,41 @@ function updateLiveMinutes() {
   });
 }
 
+async function onLocaleChange() {
+  applyStaticI18n();
+  if (!routeStop?.type) return;
+  tdHeadwayTextPromises.clear();
+  tdHeadwayRoutePromises.clear();
+  headwayLoadPromise = null;
+  matchedHeadwayVariant = null;
+  routeStops = await fetchRouteStops(routeStop);
+  stopEtas.clear();
+  const currentIdx = findCurrentStopIndex();
+  const closestIdx = findClosestStopIndex(getUserPosition());
+  await initHeadwayFeatures();
+  renderStops({ currentIdx, closestIdx });
+  updateBusLocationMarkers();
+  const title = routeTitleHint(routeStop) || await routeTitle(routeStop, routeStops);
+  if (title) document.getElementById('bus-title').textContent = title;
+  const expandedKey = [...expandedStops][0];
+  if (expandedKey) {
+    const stop = routeStops.find((s) => stopKey(s) === expandedKey);
+    if (stop) {
+      const etas = await fetchStopEtas(stop);
+      stopEtas.set(expandedKey, etas);
+      renderStops({ currentIdx, closestIdx });
+      updateBusLocationMarkers();
+    }
+  }
+}
+
 async function init() {
+  initLocale();
+  initLocaleToggle();
+  initDashboardThemeToggle();
+  applyStaticI18n();
+  window.addEventListener(LOCALE_CHANGE, () => { void onLocaleChange(); });
+
   initBackLink();
   bindStopClicks();
   const params = new URLSearchParams(window.location.search);
@@ -1501,8 +1572,8 @@ async function init() {
   initTimetableButton();
 
   if (!routeStop?.type) {
-    document.getElementById('bus-title').textContent = '路線が見つかりません';
-    document.getElementById('bus-stops').innerHTML = '<div class="error-msg">無効なリンクです</div>';
+    document.getElementById('bus-title').textContent = t('bus.notFound');
+    document.getElementById('bus-stops').innerHTML = `<div class="error-msg">${escapeHtml(t('bus.invalidLink'))}</div>`;
     return;
   }
 
@@ -1580,7 +1651,7 @@ async function init() {
       }
     });
   } catch (err) {
-    if (!titleHint) document.getElementById('bus-title').textContent = '読み込みエラー';
+    if (!titleHint) document.getElementById('bus-title').textContent = t('bus.loadError');
     document.getElementById('bus-stops').innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
   }
 }

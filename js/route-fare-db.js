@@ -1,3 +1,5 @@
+import { pickLocalized, t } from './locale.js';
+
 /** @typedef {{ location: { lat: number, lng: number }, name: { zh: string, en: string } }} FareStopEntry */
 
 const ROUTE_FARE_LIST_URL = 'https://data.hkbus.app/routeFareList.min.json';
@@ -81,7 +83,7 @@ async function writeIdb(data) {
  */
 async function fetchRouteFareDbFromNetwork() {
   const res = await fetch(ROUTE_FARE_LIST_URL);
-  if (!res.ok) throw new Error('路線データの取得に失敗しました');
+  if (!res.ok) throw new Error(t('error.fareDb'));
   const json = await res.json();
   const db = {
     routeList: json.routeList ?? {},
@@ -149,7 +151,7 @@ export function gmbRouteSeqFromBound(bound) {
 /**
  * @param {string[]} stopIds
  * @param {Record<string, FareStopEntry>} [stopList]
- * @param {(name: string) => string} [formatName]
+ * @param {(name: string, fareStop?: FareStopEntry) => string} [formatName]
  * @returns {{ seq: number, stopId: string, name: string, lat: number | null, lng: number | null }[]}
  */
 export function buildRouteStopsFromFareStopIds(stopIds, stopList = cachedDb?.stopList, formatName = (n) => n) {
@@ -163,7 +165,7 @@ export function buildRouteStopsFromFareStopIds(stopIds, stopList = cachedDb?.sto
     stops.push({
       seq,
       stopId,
-      name: formatName(fareStop?.name?.zh ?? stopId),
+      name: formatName(fareStop?.name?.zh ?? stopId, fareStop),
       lat: fareStop?.location?.lat ?? null,
       lng: fareStop?.location?.lng ?? null,
     });
@@ -308,7 +310,7 @@ function findGmbRouteEntry(realRouteId, routeSeq, routeList = cachedDb?.routeLis
  */
 export function getGmbRouteDest(realRouteId, routeSeq) {
   const entry = findGmbRouteEntry(realRouteId, routeSeq);
-  return entry?.dest?.zh?.trim() ?? '';
+  return pickLocalized(entry?.dest?.zh?.trim(), entry?.dest?.en?.trim());
 }
 
 /**

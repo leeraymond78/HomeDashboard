@@ -1,3 +1,5 @@
+import { t } from './locale.js';
+
 const STORAGE_KEY = 'homedashboard-theme';
 
 const THEME_META = {
@@ -33,11 +35,12 @@ function updateThemeButton() {
   if (!btn) return;
   const lcd = getTheme() === 'lcd';
   btn.setAttribute('aria-pressed', lcd ? 'true' : 'false');
-  btn.setAttribute('aria-label', lcd ? 'ダークモードに切替' : 'LCDライトモードに切替');
-  btn.textContent = lcd ? 'LEDモード' : 'LCDモード';
+  btn.setAttribute('aria-label', lcd ? t('theme.toDark') : t('theme.toLcd'));
+  btn.textContent = lcd ? t('theme.led') : t('theme.lcd');
 }
 
 export function initDashboardThemeToggle() {
   applyTheme(getTheme());
   document.getElementById('theme-btn')?.addEventListener('click', toggleTheme);
+  window.addEventListener('localechange', updateThemeButton);
 }

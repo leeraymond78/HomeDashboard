@@ -401,6 +401,10 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 
 .col-route { width: 50px; }
 .col-express { width: 46px; }
+
+html[data-locale="en"] .col-express {
+  width: 52px;
+}
 .col-time { width: 86px; }
 .col-mins { width: 26px; }
 .col-remark { width: 5.5em; min-width: 88px; }
@@ -411,19 +415,33 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 }
 
 .eta-table td.express-cell {
-  position: relative;
-  padding: 1px 0;
-  font-size: 20px;
+  padding: 1px 2px;
+  vertical-align: middle;
 }
 
 .express-badge {
-  position: absolute;
-  inset: 1px 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  width: 100%;
   color: var(--badge-fg);
+  line-height: 1.1;
+  text-align: center;
+  font-size: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html[data-locale="en"] .express-badge {
+  font-size: clamp(8px, 2.4vw, 10px);
   line-height: 1.15;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-overflow: unset;
 }
 
 .eta-time {
@@ -531,6 +549,10 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   pointer-events: none;
 }
 
+.refresh-bar .theme-btn {
+  pointer-events: auto;
+}
+
 .build-stamp {
   position: fixed;
   left: 8px;
@@ -548,6 +570,7 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
   color: var(--white-54);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+  margin-right: -4px;
 }
 
 .refresh-btn {
@@ -1478,6 +1501,11 @@ body.route-search-page {
   --route-search-row-height: calc((var(--route-search-keyboard-height) + var(--safe-bottom)) / var(--route-search-keyboard-rows));
   --route-search-viewport-bottom: 0px;
   --route-search-bottom-pad: calc(var(--safe-bottom) + var(--route-search-viewport-bottom));
+}
+
+body.route-search-page .refresh-bar {
+  bottom: calc(var(--route-search-keyboard-height) + var(--route-search-viewport-bottom));
+  z-index: 11;
 }
 
 .route-search-page .route-search-header {

@@ -24,6 +24,7 @@
 /** @typedef {{ phase: string, loaded: number, total: number }} RouteSearchProgress */
 
 import { ensureRouteFareDb, gmbRouteSeqFromBound } from './route-fare-db.js';
+import { pickLocalized, t } from './locale.js';
 
 const CACHE_VERSION = 9;
 const CACHE_KEY = 'homedashboard-route-search-v9';
@@ -122,9 +123,13 @@ function buildMatchFromFareEntry(entry, co) {
   if (!route) return null;
 
   const serviceType = parseServiceType(entry.serviceType);
-  const orig = entry.orig?.zh ?? '';
-  const dest = entry.dest?.zh ?? '';
-  const label = `${route} 往${dest}`;
+  const origZh = entry.orig?.zh ?? '';
+  const origEn = entry.orig?.en ?? '';
+  const destZh = entry.dest?.zh ?? '';
+  const destEn = entry.dest?.en ?? '';
+  const label = t('search.label', { route, dest: pickLocalized(destZh, destEn) });
+
+  const base = { orig: origZh, origEn, dest: destZh, destEn, label };
 
   if (co === 'kmb') {
     const kmbStops = entry.stops?.kmb;
@@ -135,10 +140,8 @@ function buildMatchFromFareEntry(entry, co) {
       route,
       bound: entry.bound?.kmb ?? 'O',
       service_type: serviceType,
-      orig,
-      dest,
+      ...base,
       kmbStopId: firstStop != null ? String(firstStop) : undefined,
-      label,
     };
   }
 
@@ -150,11 +153,9 @@ function buildMatchFromFareEntry(entry, co) {
       routeId: route,
       route,
       dir: entry.bound?.ctb ?? 'O',
-      orig,
-      dest,
+      ...base,
       nwfbSpecial: serviceType >= 2,
       nwfbStopId: firstStop != null ? String(firstStop) : undefined,
-      label,
     };
   }
 
@@ -166,10 +167,8 @@ function buildMatchFromFareEntry(entry, co) {
       type: 'mtr',
       routeId: route,
       stopId: String(firstStop),
-      orig,
-      dest,
+      ...base,
       mtrSpecial: serviceType >= 2,
-      label,
     };
   }
 
@@ -181,10 +180,8 @@ function buildMatchFromFareEntry(entry, co) {
     realRouteId: entry.gtfsId,
     routeSeq: gmbRouteSeqFromBound(entry.bound?.gmb),
     gmbStopId: firstStop != null ? String(firstStop) : undefined,
-    orig,
-    dest,
+    ...base,
     gmbSpecial: serviceType >= 2,
-    label,
   };
 }
 
@@ -395,7 +392,7 @@ export async function resolveRouteStop(match) {
       );
       const json = await res.json();
       const first = json.data?.[0];
-      if (!first) throw new Error('停留所が見つかりません');
+      if (!first) throw new Error(t('search.error.noStop'));
       return {
         type: 'kmb',
         route: match.route,
@@ -419,7 +416,7 @@ export async function resolveRouteStop(match) {
       );
       const json = await res.json();
       const first = (json.data ?? []).sort((a, b) => parseInt(a.seq, 10) - parseInt(b.seq, 10))[0];
-      if (!first) throw new Error('停留所が見つかりません');
+      if (!first) throw new Error(t('search.error.noStop'));
       return {
         type: 'nwfb',
         route: match.route,
@@ -428,12 +425,12 @@ export async function resolveRouteStop(match) {
       };
     }
     case 'mtr': {
-      if (!match.stopId) throw new Error('停留所が見つかりません');
+      if (!match.stopId) throw new Error(t('search.error.noStop'));
       return { type: 'mtr', stopId: match.stopId };
     }
     case 'gmb': {
       if (match.realRouteId == null || match.routeSeq == null || !match.gmbStopId) {
-        throw new Error('路線情報が不足しています');
+        throw new Error(t('search.error.incomplete'));
       }
       return {
         type: 'gmb',
@@ -444,6 +441,6 @@ export async function resolveRouteStop(match) {
       };
     }
     default:
-      throw new Error('未対応の路線です');
+      throw new Error(t('search.error.unsupported'));
   }
 }

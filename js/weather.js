@@ -1,8 +1,12 @@
 import { distanceM, formatDistance, getUserPosition, requestUserPosition } from './location.js';
 import { escapeHtml } from './utils.js';
+import { formatLocaleDateTime, isEnglish, pickLocalized, t } from './locale.js';
 
 const HKO_API = 'https://data.weather.gov.hk/weatherAPI/opendata/weather.php';
-const HKO_LANG = 'tc';
+
+function hkoLang() {
+  return isEnglish() ? 'en' : 'tc';
+}
 
 const WEATHER = {
   missing: '--',
@@ -87,6 +91,18 @@ const TYPHOON_LABELS = {
   TC8: '八號',
 };
 
+const TYPHOON_LABELS_EN = {
+  TC1: 'No. 1',
+  TC3: 'No. 3',
+  TC8NE: 'No. 8 NE',
+  TC8SE: 'No. 8 SE',
+  TC8SW: 'No. 8 SW',
+  TC8NW: 'No. 8 NW',
+  TC9: 'No. 9',
+  TC10: 'No. 10',
+  TC8: 'No. 8',
+};
+
 /** @type {number | null} */
 let weatherRefreshId = null;
 let weatherExpanded = false;
@@ -96,11 +112,13 @@ const CHEVRON_SVG = `
     <polyline points="6 9 12 15 18 9"/>
   </svg>`;
 
-const HKO_APP_LINK = `
-  <a class="weather-hko-btn" href="myobservatory://">開啟「我的天文台」App 查看更多</a>`;
+const HKO_APP_LINK = () => `
+  <a class="weather-hko-btn" href="myobservatory://">${escapeHtml(t('weather.hkoApp'))}</a>`;
 
 function hkoUrl(dataType) {
-  return `${HKO_API}?dataType=${dataType}&lang=${HKO_LANG}`;
+  // rhrread place keys are Traditional Chinese; keep tc so station lookup and temperature match.
+  const lang = dataType === 'rhrread' ? 'tc' : hkoLang();
+  return `${HKO_API}?dataType=${dataType}&lang=${lang}`;
 }
 
 async function fetchJson(url) {
@@ -151,12 +169,28 @@ function resolveNearestStation(position, rhrread) {
   return nearest ?? { ...fallback, distanceM: null, usedGps: false };
 }
 
+function stationLabel(station) {
+  if (!station) return '';
+  return pickLocalized(station.place, station.en);
+}
+
+function hkoPlaceLabel(place) {
+  if (!place) return '';
+  const entry = HKO_STATIONS[place];
+  if (entry) return pickLocalized(place, entry.en);
+  for (const [zh, geo] of Object.entries(HKO_STATIONS)) {
+    if (geo.en === place) return pickLocalized(zh, geo.en);
+  }
+  return place;
+}
+
 function buildLocationNote(station) {
   if (!station) return '';
+  const label = stationLabel(station);
   if (station.usedGps && station.distanceM != null) {
-    return `依您目前位置，最近氣象站為${station.place}（約 ${formatDistance(station.distanceM)}）`;
+    return t('weather.locationGps', { station: label, distance: formatDistance(station.distanceM) });
   }
-  return `無法取得定位，使用預設氣象站（${station.place}）`;
+  return t('weather.locationFallback', { station: label });
 }
 
 function pickTemperature(data, place) {
@@ -233,33 +267,30 @@ function formatTempRange(max, min) {
 }
 
 function formatUpdateTime(iso) {
-  if (!iso) return WEATHER.missing;
-  try {
-    return new Date(iso).toLocaleString('zh-HK', {
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-  } catch {
-    return WEATHER.missing;
-  }
+  return formatLocaleDateTime(iso);
 }
 
 function warningPreviewLabel({ code, name }) {
-  if (code === 'WRAINA') return '🟡黃雨';
-  if (code === 'WRAINR') return '🔴紅雨';
-  if (code === 'WRAINB') return '⚫黑雨';
-  if (code === 'WTS') return '⚡️雷暴';
-  if (TYPHOON_LABELS[code]) return `🌀${TYPHOON_LABELS[code]}`;
-  if (name) return name.replace(/(警告|信號)+$/g, '');
+  if (code === 'WRAINA') return `🟡${t('weather.rain.yellow')}`;
+  if (code === 'WRAINR') return `🔴${t('weather.rain.red')}`;
+  if (code === 'WRAINB') return `⚫${t('weather.rain.black')}`;
+  if (code === 'WTS') return `⚡️${t('weather.thunderstorm')}`;
+  if (TYPHOON_LABELS[code]) {
+    const level = isEnglish() ? TYPHOON_LABELS_EN[code] : TYPHOON_LABELS[code];
+    return `🌀${level}`;
+  }
+  if (name) return name.replace(/(警告|信號|warning|signal)+$/gi, '');
   return code || WEATHER.missing;
 }
 
 function warningLabel(code, name) {
-  if (RAINSTORM_LABELS[code]) return `暴雨警告：${RAINSTORM_LABELS[code]}`;
-  if (TYPHOON_LABELS[code]) return `颱風信號：${TYPHOON_LABELS[code]}`;
+  if (code === 'WRAINA') return t('weather.rainstorm', { level: t('weather.rain.yellow') });
+  if (code === 'WRAINR') return t('weather.rainstorm', { level: t('weather.rain.red') });
+  if (code === 'WRAINB') return t('weather.rainstorm', { level: t('weather.rain.black') });
+  if (TYPHOON_LABELS[code]) {
+    const level = isEnglish() ? TYPHOON_LABELS_EN[code] : TYPHOON_LABELS[code];
+    return t('weather.typhoonSignal', { level });
+  }
   return name || code || WEATHER.missing;
 }
 
@@ -302,15 +333,15 @@ function buildWeatherViewModel({ rhrread, fnd, flw, warnsum, errors, station }) 
   const otherAlerts = [
     ...warnings.map((w) => w.label),
     ...(typhoonInfo && !warnings.some((w) => w.code?.startsWith('TC'))
-      ? [`熱帶氣旋：${typhoonInfo}`]
+      ? [t('weather.typhoon', { info: typhoonInfo })]
       : []),
   ];
 
   const humidityNote = humidity?.place && humidity.place !== station?.place
-    ? `濕度資料來自${humidity.place}`
+    ? t('weather.humidityFrom', { station: hkoPlaceLabel(humidity.place) })
     : '';
   const rainfallNote = rainfall?.place && rainfall.place !== station?.place
-    ? `雨量資料來自${rainfall.place}`
+    ? t('weather.rainfallFrom', { station: hkoPlaceLabel(rainfall.place) })
     : '';
 
   const updateCandidates = [
@@ -324,8 +355,8 @@ function buildWeatherViewModel({ rhrread, fnd, flw, warnsum, errors, station }) 
   const dataNote = [buildLocationNote(station), humidityNote, rainfallNote].filter(Boolean).join('；');
 
   return {
-    headerTitle: `${station?.place ?? WEATHER.missing} · ${temp?.value != null ? `${temp.value}°C` : WEATHER.missing}`,
-    location: station?.place ?? WEATHER.missing,
+    headerTitle: `${stationLabel(station) || WEATHER.missing} · ${temp?.value != null ? `${temp.value}°C` : WEATHER.missing}`,
+    location: stationLabel(station) || WEATHER.missing,
     locationEn: station?.en ?? '',
     dataNote,
     temperature: temp?.value != null ? `${temp.value}°C` : WEATHER.missing,
@@ -384,9 +415,9 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
   if (state === 'loading') {
     root.innerHTML = `
       <button class="group-header weather-header" type="button" aria-expanded="false" disabled>
-        <span class="group-title">天氣</span>
+        <span class="group-title">${escapeHtml(t('weather.title'))}</span>
         <span class="group-trailing">
-          <span class="weather-preview">載入中…</span>
+          <span class="weather-preview">${escapeHtml(t('weather.loading'))}</span>
           ${CHEVRON_SVG}
         </span>
       </button>`;
@@ -397,16 +428,16 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
   if (state === 'error' && !vm) {
     root.innerHTML = `
       <button class="group-header weather-header" type="button" aria-expanded="false">
-        <span class="group-title">天氣</span>
+        <span class="group-title">${escapeHtml(t('weather.title'))}</span>
         <span class="group-trailing">
-          <span class="weather-preview weather-preview-severe">無法取得</span>
+          <span class="weather-preview weather-preview-severe">${escapeHtml(t('weather.unavailable'))}</span>
           ${CHEVRON_SVG}
         </span>
       </button>
       <div class="group-body weather-body">
         <div class="group-body-inner">
-          <div class="weather-error error-msg">天氣資料暫時無法取得</div>
-          ${HKO_APP_LINK}
+          <div class="weather-error error-msg">${escapeHtml(t('weather.error'))}</div>
+          ${HKO_APP_LINK()}
         </div>
       </div>`;
     bindWeatherToggle(root);
@@ -418,7 +449,7 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
     ? vm.warnings.map((w) => `
         <span class="weather-warn-chip${w.severe ? ' weather-warn-chip-severe' : ''}">${escapeHtml(w.label)}</span>
       `).join('')
-    : '<span class="weather-warn-chip weather-warn-chip-clear">無生效警告</span>';
+    : `<span class="weather-warn-chip weather-warn-chip-clear">${escapeHtml(t('weather.noWarnings'))}</span>`;
 
   const alertLines = vm.otherAlerts
     .filter((line) => line && line !== WEATHER.missing)
@@ -442,26 +473,26 @@ function renderWeatherSection(root, vm, { state = 'ready' } = {}) {
       <div class="group-body-inner">
         ${vm.dataNote ? `<p class="weather-note">${escapeHtml(vm.dataNote)}</p>` : ''}
         <div class="weather-summary" role="list">
-          ${renderStat('相對濕度', vm.humidity)}
-          ${renderStat('降雨量', vm.rainfall)}
+          ${renderStat(t('weather.humidity'), vm.humidity)}
+          ${renderStat(t('weather.rainfall'), vm.rainfall)}
         </div>
         <div class="weather-details">
           <div class="weather-detail-row">
-            <span class="weather-detail-label">今日最高／最低</span>
+            <span class="weather-detail-label">${escapeHtml(t('weather.todayHighLow'))}</span>
             <span class="weather-detail-value">${escapeHtml(vm.todayHighLow)}</span>
           </div>
           <div class="weather-detail-row">
-            <span class="weather-detail-label">明天</span>
+            <span class="weather-detail-label">${escapeHtml(t('weather.tomorrow'))}</span>
             <span class="weather-detail-value">${escapeHtml(vm.tomorrowSummary)}</span>
           </div>
           ${vm.warnings.length || alertLines ? `
           <div class="weather-warnings">
-            <div class="weather-detail-label">生效警告</div>
+            <div class="weather-detail-label">${escapeHtml(t('weather.activeWarnings'))}</div>
             <div class="weather-warn-chips">${warnChips}</div>
             ${alertLines ? `<ul class="weather-alert-list">${alertLines}</ul>` : ''}
           </div>` : ''}
         </div>
-        ${HKO_APP_LINK}
+        ${HKO_APP_LINK()}
       </div>
     </div>`;
 

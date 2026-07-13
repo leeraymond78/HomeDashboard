@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-page-title="search.title">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -7,6 +7,11 @@
   <script>
     (function () {
       try {
+        var l = localStorage.getItem('homedashboard-locale');
+        if (l === 'en' || l === 'ja') {
+          document.documentElement.lang = l;
+          document.documentElement.dataset.locale = l;
+        }
         var t = localStorage.getItem('homedashboard-theme');
         if (t === 'lcd' || t === 'dark') {
           document.documentElement.dataset.theme = t;
@@ -32,17 +37,22 @@
         <svg class="page-nav-back-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <polyline points="15 18 9 12 15 6"/>
         </svg>
-        戻る
+        <span data-i18n="bus.back">戻る</span>
       </a>
     </nav>
     <div id="route-search-input" class="route-search-input route-search-input--empty" aria-live="polite"></div>
   </header>
 
   <main class="route-search-main">
-    <ul id="route-search-results" class="route-search-results" role="listbox" aria-label="検索結果"></ul>
+    <ul id="route-search-results" class="route-search-results" role="listbox" data-i18n-aria="search.results"></ul>
   </main>
 
-  <div id="route-search-keyboard" class="route-search-keyboard" role="group" aria-label="路線番号キーボード"></div>
+  <div id="route-search-keyboard" class="route-search-keyboard" role="group" data-i18n-aria="search.keyboard"></div>
+
+  <footer class="refresh-bar">
+    <button id="locale-btn" type="button" class="theme-btn" aria-pressed="false">EN</button>
+    <button id="theme-btn" type="button" class="theme-btn" aria-pressed="false">LCD</button>
+  </footer>
 
   <script src="js/register-sw.js"></script>
   <script src="js/route-search.js" type="module"></script>

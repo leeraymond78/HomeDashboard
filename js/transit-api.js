@@ -5,6 +5,13 @@
 
 import { distanceM } from './location.js';
 import {
+  formatLocaleTime,
+  isAwaitingDepartRemark,
+  isEnglish,
+  pickLocalized,
+  t,
+} from './locale.js';
+import {
   attachFaresToRouteStops,
   buildRouteStopsFromFareStopIds,
   ensureRouteFareDb,
@@ -16,10 +23,10 @@ import {
 } from './route-fare-db.js';
 
 const MTR_DEST = {
-  FT: '富泰',
-  TL: '大欖',
-  SKWT: '掃管笏',
-  SKW_CIR: '掃管笏',
+  FT: { zh: '富泰', en: 'Fu Tai' },
+  TL: { zh: '大欖', en: 'Tai Lam' },
+  SKWT: { zh: '掃管笏', en: 'So Kwun Wat' },
+  SKW_CIR: { zh: '掃管笏', en: 'So Kwun Wat' },
 };
 
 export const SOCIF_GEO = {
@@ -73,32 +80,32 @@ function isAirport(routeId) {
 }
 
 export function expressInfo(routeId, operator) {
-  if (isAirport(routeId)) return { text: '空港', cls: 'bg-airport' };
+  if (isAirport(routeId)) return { text: t('express.airport'), cls: 'bg-airport' };
   if (operator === 'kmb') {
     return routeId.includes('X')
-      ? { text: '特急', cls: 'bg-kmb-express' }
-      : { text: '各停', cls: 'bg-kmb-local' };
+      ? { text: t('express.express'), cls: 'bg-kmb-express' }
+      : { text: t('express.local'), cls: 'bg-kmb-local' };
   }
-  if (operator === 'mtr') return { text: '各停', cls: 'bg-mtr' };
-  if (operator === 'gmb') return { text: '準急', cls: 'bg-gmb' };
-  if (operator === 'socif') return { text: '穿梭', cls: 'bg-socif' };
-  return { text: 'ﾌﾂｳ', cls: 'bg-nwfb' };
+  if (operator === 'mtr') return { text: t('express.local'), cls: 'bg-mtr' };
+  if (operator === 'gmb') return { text: t('express.semiExpress'), cls: 'bg-gmb' };
+  if (operator === 'socif') return { text: t('express.shuttle'), cls: 'bg-socif' };
+  return { text: t('express.normal'), cls: 'bg-nwfb' };
 }
 
 export function translateRemark(operator, raw, isScheduled) {
   if (operator === 'kmb') {
-    if (raw === '原定班次') return '時刻通り';
+    if (raw === '原定班次') return t('remark.scheduled');
     return raw;
   }
   if (operator === 'gmb' || operator === 'socif') {
-    if (raw === '未開出') return '発車待ち';
+    if (raw === '未開出') return t('remark.awaitingDepart');
     return raw ?? '';
   }
   if (operator === 'mtr') {
     if (raw === '受交通擠塞影響，到站時間可能稍為延遲') {
-      return '渋滞により、到着時間が若干遅れる場合があります。';
+      return t('remark.trafficDelay');
     }
-    if (isScheduled && !raw) return '時刻通り';
+    if (isScheduled && !raw) return t('remark.scheduled');
     return raw ?? '';
   }
   return raw ?? '';
@@ -111,7 +118,7 @@ export function etaColorClass(isScheduled, remark) {
 }
 
 export function formatTime(date) {
-  return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return formatLocaleTime(date);
 }
 
 export function mtrRouteFromStopId(stopId) {
@@ -120,7 +127,9 @@ export function mtrRouteFromStopId(stopId) {
 
 function mtrDestFromLineRef(lineRef) {
   const suffix = lineRef.split('_').slice(1).join('_');
-  return MTR_DEST[suffix] ?? suffix;
+  const entry = MTR_DEST[suffix];
+  if (entry) return pickLocalized(entry.zh, entry.en);
+  return suffix;
 }
 
 async function fetchMtrSchedule(route) {
@@ -131,7 +140,7 @@ async function fetchMtrSchedule(route) {
   const res = await fetch('https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ language: 'zh', routeName: route }),
+    body: JSON.stringify({ language: isEnglish() ? 'en' : 'zh', routeName: route }),
   });
   const json = await res.json();
   const stops = json.busStop ?? [];
@@ -166,6 +175,10 @@ async function fetchSocifRouteEtaData(route, routeSeq) {
 
 const KMB_STOP_CODE_SUFFIX = /\s*\([A-Z0-9]+\)\s*$/;
 
+function stopNameFromFare(fareStop, stopId) {
+  return formatKmbStopName(pickLocalized(fareStop?.name?.zh, fareStop?.name?.en) || stopId);
+}
+
 function formatKmbStopName(name) {
   return String(name ?? '').replace(KMB_STOP_CODE_SUFFIX, '').trim();
 }
@@ -176,7 +189,11 @@ async function fetchKmbStop(stopId) {
   const res = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${stopId}`);
   const json = await res.json();
   const d = json.data;
-  const info = { lat: parseFloat(d.lat), lng: parseFloat(d.long), name: formatKmbStopName(d.name_tc) };
+  const info = {
+    lat: parseFloat(d.lat),
+    lng: parseFloat(d.long),
+    name: pickLocalized(formatKmbStopName(d.name_tc), formatKmbStopName(d.name_en)),
+  };
   stopDetailCache.set(`kmb:${stopId}`, info);
   return info;
 }
@@ -187,7 +204,11 @@ async function fetchNwfbStop(stopId) {
   const res = await fetch(`https://rt.data.gov.hk/v1.1/transport/citybus-nwfb/stop/${stopId}`);
   const json = await res.json();
   const d = json.data;
-  const info = { lat: parseFloat(d.lat), lng: parseFloat(d.long), name: d.name_tc };
+  const info = {
+    lat: parseFloat(d.lat),
+    lng: parseFloat(d.long),
+    name: pickLocalized(d.name_tc, d.name_en),
+  };
   stopDetailCache.set(`nwfb:${stopId}`, info);
   return info;
 }
@@ -201,7 +222,7 @@ async function fetchGmbStop(stopId) {
   const info = {
     lat: parseFloat(d.latitude),
     lng: parseFloat(d.longitude),
-    name: json.data.name_tc,
+    name: pickLocalized(json.data.name_tc, json.data.name_en),
   };
   stopDetailCache.set(`gmb:${stopId}`, info);
   return info;
@@ -232,6 +253,18 @@ export async function fetchSocifRoute(routeId) {
   return route;
 }
 
+/** @param {number | string} routeId @param {number} routeSeq */
+export async function getSocifDirection(routeId, routeSeq) {
+  const routeData = await fetchSocifRoute(routeId);
+  return routeData?.directions?.find((d) => d.route_seq === routeSeq) ?? null;
+}
+
+/** @param {{ dest_tc?: string, dest_en?: string } | null | undefined} direction @param {string} [fallback] */
+export function socifDestFromDirection(direction, fallback = '') {
+  if (!direction) return fallback;
+  return pickLocalized(direction.dest_tc, direction.dest_en) || fallback;
+}
+
 export async function fetchSocifWeekdaySchedule(routeId, weekdayIndex) {
   const key = `${routeId}:${weekdayIndex}`;
   if (socifWeekdayScheduleCache.has(key)) return socifWeekdayScheduleCache.get(key);
@@ -251,7 +284,7 @@ export async function getMtrStopGeo(stopId) {
 }
 
 function isNotDepartedRemark(remark) {
-  return remark === '発車待ち';
+  return isAwaitingDepartRemark(remark);
 }
 
 function findNearestRouteStop(routeStops, lat, lng) {
@@ -717,7 +750,7 @@ async function fetchKmbEtas(routeStop) {
       express: expressInfo(e.route, 'kmb'),
       routeClass: operatorClass('kmb'),
       time: formatTime(new Date(e.eta)),
-      dest: e.dest_tc,
+      dest: pickLocalized(e.dest_tc, e.dest_en),
       mins: Math.max(0, Math.round((new Date(e.eta) - Date.now()) / 60000)),
       remark: translateRemark('kmb', e.rmk_tc, e.rmk_en === 'Scheduled Bus'),
       etaClass: etaColorClass(e.rmk_en === 'Scheduled Bus', e.rmk_tc),
@@ -741,7 +774,7 @@ async function fetchNwfbEtas(routeStop) {
       express: expressInfo(e.route, 'nwfb'),
       routeClass: operatorClass('nwfb'),
       time: formatTime(new Date(e.eta)),
-      dest: e.dest_tc,
+      dest: pickLocalized(e.dest_tc, e.dest_en),
       mins: Math.max(0, Math.round((new Date(e.eta) - Date.now()) / 60000)),
       remark: translateRemark('nwfb', e.rmk_tc, false),
       etaClass: etaColorClass(false, e.rmk_tc),
@@ -789,7 +822,8 @@ async function fetchSocifEtas(routeStop) {
   const data = await fetchSocifRouteEtaData(routeStop.route, routeStop.routeSeq);
   const stopEta = (data.eta ?? []).find((s) => s.stopSeq === routeStop.stopSeq);
   if (!stopEta?.eta?.length) return [];
-  const dest = routeStop.dest ?? '';
+  const direction = await getSocifDirection(routeStop.route, routeStop.routeSeq);
+  const dest = socifDestFromDirection(direction, routeStop.dest ?? '');
   const displayRoute = routeStop.routeId ?? String(routeStop.route);
   return stopEta.eta.map((e) => {
     const isScheduled = e.remarks_en === 'Scheduled';
@@ -864,7 +898,8 @@ async function fetchKmbRouteStops(routeStop) {
   );
   const stopIds = entry?.stops?.kmb;
   if (Array.isArray(stopIds) && stopIds.length) {
-    const stops = buildRouteStopsFromFareStopIds(stopIds, db.stopList, formatKmbStopName);
+    const stops = buildRouteStopsFromFareStopIds(stopIds, db.stopList, (name, fareStop) =>
+      fareStop ? stopNameFromFare(fareStop, name) : formatKmbStopName(name));
     const missingCoords = stops.filter((s) => s.lat == null || s.lng == null).map((s) => s.stopId);
     if (missingCoords.length) {
       const details = await Promise.all(
@@ -907,7 +942,8 @@ async function fetchNwfbRouteStops(routeStop) {
   const entry = findCtbRouteEntry(routeStop.route, routeStop.dir, db.routeList);
   const stopIds = entry?.stops?.ctb;
   if (Array.isArray(stopIds) && stopIds.length) {
-    const stops = buildRouteStopsFromFareStopIds(stopIds, db.stopList);
+    const stops = buildRouteStopsFromFareStopIds(stopIds, db.stopList, (name, fareStop) =>
+      fareStop ? stopNameFromFare(fareStop, name) : name);
     const missingCoords = stops.filter((s) => s.lat == null || s.lng == null).map((s) => s.stopId);
     if (missingCoords.length) {
       const details = await Promise.all(
@@ -949,7 +985,7 @@ async function fetchMtrRouteStops(routeStop) {
   const entry = findLrtfeederRouteEntry(routeStop.stopId, db.routeList);
   const stopIds = entry?.stops?.lrtfeeder;
   if (!Array.isArray(stopIds) || !stopIds.length) {
-    throw new Error('MTR停留所データを読み込めません');
+    throw new Error(t('error.mtrStops'));
   }
 
   /** @type {RouteStopInfo[]} */
@@ -962,7 +998,7 @@ async function fetchMtrRouteStops(routeStop) {
     stops.push({
       seq,
       stopId,
-      name: fareStop?.name?.zh ?? stopId,
+      name: stopNameFromFare(fareStop, stopId),
       lat: geo?.lat ?? null,
       lng: geo?.lng ?? null,
     });
@@ -992,7 +1028,7 @@ async function fetchGmbRouteStops(routeStop) {
     stops.push({
       seq: item.stop_seq,
       stopId,
-      name: item.name_tc ?? fareStop?.name?.zh ?? stopId,
+      name: pickLocalized(item.name_tc ?? fareStop?.name?.zh, item.name_en ?? fareStop?.name?.en) || stopId,
       lat,
       lng,
     });
@@ -1033,7 +1069,7 @@ async function fetchSocifRouteStops(routeStop) {
       stops.push({
         seq: item.stop_seq,
         stopId,
-        name: item.name_tc,
+        name: pickLocalized(item.name_tc, item.name_en),
         lat: SOCIF_GEO[geoKey].lat,
         lng: SOCIF_GEO[geoKey].lng,
       });
@@ -1052,7 +1088,7 @@ async function fetchSocifRouteStops(routeStop) {
       stops.push({
         seq: item.stop_seq,
         stopId,
-        name: item.name_tc,
+        name: pickLocalized(item.name_tc, item.name_en),
         lat: detail?.lat ?? null,
         lng: detail?.lng ?? null,
       });
@@ -1179,11 +1215,8 @@ export function routeTitleHint(routeStop) {
       return routeStop.stopId ? mtrRouteFromStopId(routeStop.stopId) : '';
     case 'gmb':
       return routeStop.routeId ?? routeStop.realRouteId ?? '';
-    case 'socif': {
-      const id = routeStop.routeId ?? (routeStop.route != null ? String(routeStop.route) : '');
-      if (id && routeStop.dest) return `${id} - ${routeStop.dest}`;
-      return id || routeStop.dest || '';
-    }
+    case 'socif':
+      return routeStop.routeId ?? (routeStop.route != null ? String(routeStop.route) : '');
     default:
       return '';
   }
@@ -1199,7 +1232,7 @@ export async function routeTitle(routeStop, stops) {
         routeStop.bound,
         routeStop.service_type ?? 1,
       );
-      const dest = entry?.dest?.zh ?? lastName;
+      const dest = pickLocalized(entry?.dest?.zh, entry?.dest?.en) || lastName;
       return `${routeStop.route} - ${dest}`;
     }
     case 'mtr':
@@ -1209,11 +1242,14 @@ export async function routeTitle(routeStop, stops) {
     case 'nwfb': {
       await ensureRouteFareDb();
       const entry = findCtbRouteEntry(routeStop.route, routeStop.dir);
-      const dest = entry?.dest?.zh ?? lastName;
+      const dest = pickLocalized(entry?.dest?.zh, entry?.dest?.en) || lastName;
       return `${routeStop.route} - ${dest}`;
     }
-    case 'socif':
-      return `${routeStop.routeId ?? routeStop.route} - ${routeStop.dest ?? lastName}`;
+    case 'socif': {
+      const direction = await getSocifDirection(routeStop.route, routeStop.routeSeq);
+      const dest = socifDestFromDirection(direction, routeStop.dest ?? lastName);
+      return `${routeStop.routeId ?? routeStop.route} - ${dest}`;
+    }
     default:
       return '';
   }
