@@ -1,5 +1,5 @@
 /* HomeDashboard service worker — app shell + runtime CDN cache. */
-const SHELL_VERSION = 'v25';
+const SHELL_VERSION = 'v29';
 const SHELL_CACHE = `home-dashboard-shell-${SHELL_VERSION}`;
 const RUNTIME_CACHE = `home-dashboard-runtime-${SHELL_VERSION}`;
 
@@ -18,6 +18,8 @@ const SHELL_ASSETS = [
   'js/transit-api.js',
   'js/utils.js',
   'js/weather.js',
+  'js/traffic.js',
+  'js/traffic-map.js',
   'js/pull-to-refresh.js',
   'js/route-search.js',
   'js/route-search-api.js',
@@ -47,6 +49,10 @@ const ROUTE_API_HOSTS = new Set([
   'rt.data.gov.hk',
   'data.etagmb.gov.hk',
   'data.hkbus.app',
+  'tdas-api.hkemobility.gov.hk',
+  'resource.data.one.gov.hk',
+  'portal.csdi.gov.hk',
+  'mapapi.geodata.gov.hk',
 ]);
 
 function scopeUrl(path) {

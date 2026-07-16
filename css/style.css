@@ -33,39 +33,52 @@ html:not([data-theme]) {
   --nwfb: #ffff00;
   --socif: #00d4ff;
   --scheduled: #1e64ff;
-  --error: #ff0000;
+  --error: var(--kmb);
   --eta-normal: #ffff80;
   --dest: #f67f02;
   --badge-fg: #000;
-  --badge-kmb-express: rgba(255, 0, 0, 0.63);
-  --badge-kmb-local: rgba(0, 0, 255, 0.63);
-  --badge-mtr: rgba(0, 0, 255, 0.63);
-  --badge-gmb: rgba(0, 255, 0, 0.63);
-  --badge-socif: rgba(0, 212, 255, 0.63);
-  --badge-nwfb: rgba(255, 255, 0, 0.63);
-  --badge-airport: rgba(246, 127, 2, 0.63);
-  --loc-prompt-bg: rgba(30, 100, 255, 0.12);
-  --loc-prompt-border: rgba(30, 100, 255, 0.45);
-  --loc-prompt-btn-bg: rgba(30, 100, 255, 0.2);
-  --loc-prompt-btn-bg-active: rgba(30, 100, 255, 0.32);
-  --on-accent: #fff;
-  --stop-current-fill: #1e64ff;
+  --badge-kmb-express: color-mix(in srgb, var(--kmb) 63%, transparent);
+  --badge-kmb-local: color-mix(in srgb, var(--mtr) 63%, transparent);
+  --badge-mtr: color-mix(in srgb, var(--mtr) 63%, transparent);
+  --badge-gmb: color-mix(in srgb, var(--gmb) 63%, transparent);
+  --badge-socif: color-mix(in srgb, var(--socif) 63%, transparent);
+  --badge-nwfb: color-mix(in srgb, var(--nwfb) 63%, transparent);
+  --badge-airport: color-mix(in srgb, var(--dest) 63%, transparent);
+  --loc-prompt-bg: color-mix(in srgb, var(--scheduled) 12%, transparent);
+  --loc-prompt-border: color-mix(in srgb, var(--scheduled) 45%, transparent);
+  --loc-prompt-btn-bg: color-mix(in srgb, var(--scheduled) 20%, transparent);
+  --loc-prompt-btn-bg-active: color-mix(in srgb, var(--scheduled) 32%, transparent);
+  --on-accent: var(--white);
+  --stop-current-fill: var(--scheduled);
   --stop-current-edge: #4d9fff;
-  --stop-current-row-bg: rgba(30, 100, 255, 0.15);
+  --stop-current-row-bg: color-mix(in srgb, var(--scheduled) 15%, transparent);
   --stop-proximity-fill: #00a040;
   --stop-proximity-edge: #4dff80;
-  --stop-proximity-row-bg: rgba(0, 200, 80, 0.1);
-  --stop-proximity-row-bg-soft: rgba(0, 200, 80, 0.08);
+  --stop-proximity-row-bg: color-mix(in srgb, var(--stop-proximity-fill) 10%, transparent);
+  --stop-proximity-row-bg-soft: color-mix(in srgb, var(--stop-proximity-fill) 8%, transparent);
   --marker-default-fill: rgba(80, 80, 80, 0.9);
-  --marker-default-edge: rgba(255, 255, 255, 0.5);
-  --stop-num-default-fill: rgba(255, 255, 255, 0.12);
-  --stop-num-default-edge: rgba(255, 255, 255, 0.35);
+  --marker-default-edge: color-mix(in srgb, var(--white) 50%, transparent);
+  --stop-num-default-fill: var(--surface-strong);
+  --stop-num-default-edge: color-mix(in srgb, var(--white) 35%, transparent);
   --tooltip-bg: rgba(0, 0, 0, 0.85);
-  --tooltip-fg: #fff;
-  --tooltip-arrow: rgba(0, 0, 0, 0.85);
+  --tooltip-fg: var(--white);
+  --tooltip-arrow: var(--tooltip-bg);
   --chip-on-dark-bg: rgba(0, 0, 0, 0.82);
-  --map-control-bg: rgba(0, 0, 0, 0.72);
-  --map-control-fg: #fff;
+  --map-control-bg: var(--overlay-strong);
+  --map-control-fg: var(--white);
+  --traffic-good: #3ddc84;
+  --traffic-moderate: #e0b84a;
+  --traffic-good-fill: #3ddc84;
+  --traffic-moderate-fill: #e0b84a;
+  --timetable-accent: #ffde59;
+  --timetable-accent-soft: color-mix(in srgb, var(--timetable-accent) 12%, transparent);
+  --timetable-accent-border: var(--timetable-accent);
+  --overlay: rgba(0, 0, 0, 0.55);
+  --overlay-strong: rgba(0, 0, 0, 0.72);
+  --shadow: rgba(0, 0, 0, 0.45);
+  --map-canvas: #1a1a1a;
+  --eta-chip-bg: #c0c000;
+  --error-muted: #ff8080;
 }
 
 html[data-theme="lcd"] {
@@ -86,36 +99,64 @@ html[data-theme="lcd"] {
   --error: #7a2020;
   --eta-normal: #1a4a28;
   --dest: #5a4018;
-  --badge-fg: #1c261a;
-  --badge-kmb-express: rgba(120, 28, 28, 0.4);
-  --badge-kmb-local: rgba(26, 64, 144, 0.35);
-  --badge-mtr: rgba(26, 64, 144, 0.35);
-  --badge-gmb: rgba(15, 96, 32, 0.38);
-  --badge-socif: rgba(10, 88, 112, 0.35);
-  --badge-nwfb: rgba(92, 86, 0, 0.38);
-  --badge-airport: rgba(90, 64, 24, 0.42);
+  --badge-fg: var(--white);
+  --badge-kmb-express: color-mix(in srgb, var(--kmb) 40%, transparent);
+  --badge-kmb-local: color-mix(in srgb, var(--scheduled) 35%, transparent);
+  --badge-mtr: color-mix(in srgb, var(--scheduled) 35%, transparent);
+  --badge-gmb: color-mix(in srgb, var(--gmb) 38%, transparent);
+  --badge-socif: color-mix(in srgb, var(--socif) 35%, transparent);
+  --badge-nwfb: color-mix(in srgb, var(--nwfb) 38%, transparent);
+  --badge-airport: color-mix(in srgb, var(--dest) 42%, transparent);
   --loc-prompt-bg: rgba(40, 72, 48, 0.18);
   --loc-prompt-border: rgba(40, 72, 48, 0.5);
   --loc-prompt-btn-bg: rgba(50, 80, 55, 0.22);
   --loc-prompt-btn-bg-active: rgba(50, 80, 55, 0.34);
   --on-accent: #e8f0e2;
-  --stop-current-fill: #1a4080;
+  --stop-current-fill: var(--scheduled);
   --stop-current-edge: #0c2860;
-  --stop-current-row-bg: rgba(26, 64, 128, 0.2);
-  --stop-proximity-fill: #0f6020;
+  --stop-current-row-bg: color-mix(in srgb, var(--scheduled) 20%, transparent);
+  --stop-proximity-fill: var(--gmb);
   --stop-proximity-edge: #084018;
-  --stop-proximity-row-bg: rgba(15, 96, 32, 0.16);
-  --stop-proximity-row-bg-soft: rgba(15, 96, 32, 0.1);
+  --stop-proximity-row-bg: color-mix(in srgb, var(--gmb) 16%, transparent);
+  --stop-proximity-row-bg-soft: color-mix(in srgb, var(--gmb) 10%, transparent);
   --marker-default-fill: #d0dbc8;
   --marker-default-edge: #2e3c2c;
-  --stop-num-default-fill: rgba(255, 255, 255, 0.42);
-  --stop-num-default-edge: rgba(28, 38, 26, 0.5);
+  --stop-num-default-fill: color-mix(in srgb, #fff 42%, transparent);
+  --stop-num-default-edge: color-mix(in srgb, var(--white) 50%, transparent);
   --tooltip-bg: rgba(228, 236, 222, 0.96);
-  --tooltip-fg: #1c261a;
-  --tooltip-arrow: rgba(228, 236, 222, 0.96);
-  --chip-on-dark-bg: #1c261a;
-  --map-control-bg: rgba(28, 38, 26, 0.78);
-  --map-control-fg: #e8f0e2;
+  --tooltip-fg: var(--white);
+  --tooltip-arrow: var(--tooltip-bg);
+  --chip-on-dark-bg: var(--white);
+  --map-control-bg: color-mix(in srgb, var(--white) 78%, transparent);
+  --map-control-fg: var(--on-accent);
+  --traffic-good: #1a6b3c;
+  --traffic-moderate: #8a6a12;
+  --traffic-good-fill: #2d8a4e;
+  --traffic-moderate-fill: #b8860b;
+  --timetable-accent: var(--dest);
+  --timetable-accent-soft: color-mix(in srgb, var(--timetable-accent) 16%, transparent);
+  --timetable-accent-border: color-mix(in srgb, var(--timetable-accent) 55%, transparent);
+  --overlay: color-mix(in srgb, var(--white) 45%, transparent);
+  --overlay-strong: color-mix(in srgb, var(--white) 58%, transparent);
+  --shadow: color-mix(in srgb, var(--white) 28%, transparent);
+  --map-canvas: #c5d0bc;
+  --eta-chip-bg: #8a8010;
+  --error-muted: color-mix(in srgb, var(--error) 65%, var(--white));
+}
+
+/* Surfaces derived from --white so dark/LCD share one set of names */
+html[data-theme="dark"],
+html:not([data-theme]),
+html[data-theme="lcd"] {
+  --surface: color-mix(in srgb, var(--white) 8%, transparent);
+  --surface-soft: color-mix(in srgb, var(--white) 6%, transparent);
+  --surface-strong: color-mix(in srgb, var(--white) 12%, transparent);
+  --surface-stronger: color-mix(in srgb, var(--white) 16%, transparent);
+  --press: color-mix(in srgb, var(--white) 6%, transparent);
+  --timetable-row-bg: color-mix(in srgb, var(--white) 5%, transparent);
+  --scheduled-soft: color-mix(in srgb, var(--scheduled) 20%, transparent);
+  --error-soft: color-mix(in srgb, var(--error) 15%, transparent);
+  --scheduled-ring: color-mix(in srgb, var(--scheduled) 35%, transparent);
 }
 
 html {
@@ -441,6 +482,7 @@ html[data-locale="en"] .express-badge {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   text-overflow: unset;
 }
 
@@ -611,12 +653,12 @@ html[data-locale="en"] .express-badge {
 
 .theme-btn:active {
   color: var(--white-70);
-  background: rgba(127, 127, 127, 0.12);
+  background: var(--surface-strong);
 }
 
 html[data-theme="lcd"] .theme-btn {
   border-radius: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 25%, transparent);
 }
 
 .refresh-btn.spinning svg {
@@ -790,17 +832,357 @@ html[data-theme="lcd"] .theme-btn {
   color: var(--white-70);
 }
 
+.traffic-section {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.traffic-section .group-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traffic-section .group-trailing {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.traffic-preview {
+  font-size: 16px;
+  color: var(--white-38);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.traffic-section.open .traffic-preview {
+  color: var(--white-54);
+}
+
+.traffic-preview-severe {
+  color: var(--error);
+}
+
+.traffic-section > .traffic-desc {
+  margin: 0;
+  padding: 0.35rem 1rem 0.5rem;
+  font-size: 16px;
+  color: var(--white-54);
+  line-height: 1.35;
+}
+
+.traffic-error {
+  padding: 1rem;
+}
+
+.traffic-leg {
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.traffic-leg-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0.65rem 1rem;
+}
+
+.traffic-leg-btn:active {
+  background: var(--press);
+}
+
+.traffic-leg-map-hint {
+  color: var(--white-54);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.traffic-leg-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.traffic-leg-label {
+  font-size: 16px;
+  color: var(--white-70);
+}
+
+.traffic-leg-eta {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  color: var(--white);
+}
+
+.traffic-leg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  margin-top: 0.25rem;
+  font-size: 14px;
+  color: var(--white-38);
+}
+
+.traffic-level-good {
+  color: var(--traffic-good);
+}
+
+.traffic-level-moderate {
+  color: var(--traffic-moderate);
+}
+
+.traffic-level-bad {
+  color: var(--error);
+}
+
+.traffic-level-unknown {
+  color: var(--white-38);
+}
+
+.traffic-details {
+  padding: 0.55rem 1rem 0.35rem;
+  border-top: 1px solid var(--border);
+}
+
+.traffic-detail-label {
+  font-size: 14px;
+  color: var(--white-54);
+  margin-bottom: 0.4rem;
+}
+
+.traffic-cong-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.traffic-cong-good {
+  background: var(--traffic-good-fill);
+}
+
+.traffic-cong-moderate {
+  background: var(--traffic-moderate-fill);
+}
+
+.traffic-cong-bad {
+  background: var(--error);
+}
+
+.traffic-cong-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  margin-top: 0.4rem;
+  font-size: 13px;
+}
+
+.traffic-note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--white-38);
+}
+
+.traffic-note-pad {
+  padding: 0.55rem 1rem 0;
+}
+
+.traffic-news-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 14px;
+  color: var(--white-54);
+  line-height: 1.4;
+}
+
+.traffic-news-list li + li {
+  margin-top: 0.35rem;
+}
+
+.traffic-source {
+  margin: 0;
+  padding: 0.55rem 1rem 0.85rem;
+  font-size: 12px;
+  color: var(--white-38);
+}
+
+.traffic-map-dialog {
+  width: min(100vw - 1rem, 560px);
+  max-width: 100%;
+  height: min(92vh, 820px);
+  max-height: 92vh;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--white);
+  overflow: hidden;
+}
+
+html[data-theme="lcd"] .traffic-map-dialog {
+  background: var(--bg-base);
+  box-shadow: 0 12px 40px var(--shadow);
+}
+
+.traffic-map-dialog::backdrop {
+  background: var(--overlay);
+}
+
+.traffic-map-sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: inherit;
+}
+
+.traffic-map-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 0.85rem 0.55rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: inherit;
+}
+
+.traffic-map-titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.traffic-map-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: normal;
+  color: var(--white);
+}
+
+.traffic-map-sub {
+  margin: 0.2rem 0 0;
+  font-size: 13px;
+  color: var(--white-54);
+}
+
+.traffic-map-close {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--white-70);
+  cursor: pointer;
+}
+
+.traffic-map-close:active {
+  color: var(--white);
+  background: var(--surface);
+}
+
+.traffic-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.45rem 1rem;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  background: inherit;
+}
+
+.traffic-map {
+  flex: 1 1 auto;
+  min-height: 240px;
+  background: var(--map-canvas);
+}
+
+.traffic-map .leaflet-control-attribution {
+  font-size: 10px;
+  background: var(--map-control-bg);
+  color: var(--map-control-fg);
+}
+
+.traffic-map .leaflet-control-attribution a {
+  color: var(--map-control-fg);
+}
+
+.traffic-map-tooltip.leaflet-tooltip {
+  background: var(--tooltip-bg);
+  color: var(--tooltip-fg);
+  border: none;
+  box-shadow: none;
+  padding: 0.35rem 0.5rem;
+  font-size: 13px;
+}
+
+.traffic-map-tooltip.leaflet-tooltip::before {
+  border-top-color: var(--tooltip-arrow);
+}
+
+.traffic-map-status {
+  padding: 0.4rem 1rem;
+  font-size: 13px;
+  color: var(--white-54);
+  border-top: 1px solid var(--border);
+  background: inherit;
+}
+
+.traffic-map-hotspots {
+  margin: 0;
+  padding: 0.35rem 1rem 0.85rem;
+  list-style: none;
+  max-height: 28%;
+  overflow: auto;
+  font-size: 14px;
+  color: var(--white-70);
+  background: inherit;
+}
+
+.traffic-map-hotspots li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.traffic-map-hotspots li:first-child {
+  border-top: none;
+}
+
+.traffic-map-hotspot-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traffic-map-hotspot-id,
+.traffic-map-hotspot-empty {
+  color: var(--white-38);
+}
+
 .eta-row-clickable {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
 .eta-row-clickable:active {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-html[data-theme="lcd"] .eta-row-clickable:active {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--press);
 }
 
 /* Bus route detail page — document scroll + sticky header/map (index safe-area model) */
@@ -897,13 +1279,13 @@ html[data-theme="lcd"] .bus-detail-top {
   border-radius: 50%;
   background: var(--map-control-bg);
   color: var(--map-control-fg);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 1px 4px var(--shadow);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
 .bus-map-locate-btn:active {
-  background: rgba(40, 40, 40, 0.92);
+  background: var(--chip-on-dark-bg);
 }
 
 .bus-map-locate-btn:disabled {
@@ -912,7 +1294,7 @@ html[data-theme="lcd"] .bus-detail-top {
 }
 
 .bus-map .leaflet-control-attribution {
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--map-control-bg);
   color: var(--white-54);
 }
 
@@ -1064,7 +1446,7 @@ body.bus-detail-page .bus-stop:last-child {
 }
 
 .bus-timetable-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.72);
+  background: var(--overlay-strong);
 }
 
 .bus-timetable-sheet {
@@ -1083,7 +1465,11 @@ body.bus-detail-page .bus-stop:last-child {
   border-radius: 14px;
   background: var(--bg);
   overflow: hidden;
-  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 -10px 40px var(--shadow);
+}
+
+html[data-theme="lcd"] .bus-timetable-sheet {
+  background: var(--bg-base);
 }
 
 .bus-timetable-panel-head {
@@ -1125,14 +1511,14 @@ body.bus-detail-page .bus-stop:last-child {
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface);
   color: var(--white-70);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
 .bus-timetable-close:active {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--surface-stronger);
   color: var(--white);
 }
 
@@ -1155,7 +1541,7 @@ body.bus-detail-page .bus-stop:last-child {
   margin: 0 0 0.55rem;
   font-size: 15px;
   font-weight: normal;
-  color: #ffde59;
+  color: var(--timetable-accent);
 }
 
 .bus-timetable-subsection-title {
@@ -1180,17 +1566,17 @@ body.bus-detail-page .bus-stop:last-child {
   gap: 0.75rem;
   padding: 0.4rem 0.5rem;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--timetable-row-bg);
   font-size: 14px;
 }
 
 .bus-timetable-row--current {
-  background: rgba(255, 222, 89, 0.12);
-  box-shadow: inset 0 0 0 1px #ffde59;
+  background: var(--timetable-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--timetable-accent-border);
 }
 
 .bus-timetable-row--current .bus-timetable-range {
-  color: #ffde59;
+  color: var(--timetable-accent);
 }
 
 .bus-timetable-range {
@@ -1199,7 +1585,7 @@ body.bus-detail-page .bus-stop:last-child {
 }
 
 .bus-timetable-headway {
-  color: #ffde59;
+  color: var(--timetable-accent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1260,19 +1646,19 @@ body.bus-detail-page .bus-stop:last-child {
   margin-top: 0.35rem;
   padding: 0.5rem 0.65rem;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  background: var(--surface);
   font-size: 14px;
 }
 
 .bus-eta-item.eta-scheduled {
   border-color: var(--scheduled);
-  background: rgba(30, 100, 255, 0.2);
+  background: var(--scheduled-soft);
 }
 
 .bus-eta-item.eta-error {
   border-color: var(--error);
-  background: rgba(255, 0, 0, 0.15);
+  background: var(--error-soft);
 }
 
 .bus-eta-mins {
@@ -1280,8 +1666,8 @@ body.bus-detail-page .bus-stop:last-child {
   min-width: 50px;
   padding: 0.2rem 0.4rem;
   border-radius: 6px;
-  background: #c0c000;
-  color: #000;
+  background: var(--eta-chip-bg);
+  color: var(--badge-fg);
   font-size: 16px;
   font-weight: bold;
   text-align: center;
@@ -1304,7 +1690,7 @@ body.bus-detail-page .bus-stop:last-child {
 }
 
 .bus-eta-item.eta-error .bus-eta-remark {
-  color: #ff8080;
+  color: var(--error-muted);
 }
 
 .bus-eta-location {
@@ -1328,7 +1714,7 @@ body.bus-detail-page .bus-stop:last-child {
   flex-shrink: 0;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-strong);
   color: var(--white-54);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -1351,9 +1737,9 @@ body.bus-detail-page .bus-stop:last-child {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #1e64ff;
+  background: var(--scheduled);
   border: 2px solid var(--white);
-  box-shadow: 0 0 0 4px rgba(30, 100, 255, 0.35);
+  box-shadow: 0 0 0 4px var(--scheduled-ring);
 }
 
 .bus-vehicle-marker-wrap {
@@ -1366,7 +1752,7 @@ body.bus-detail-page .bus-stop:last-child {
   display: block;
   width: 28px;
   height: 28px;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 1px 3px var(--shadow));
 }
 
 .bus-vehicle-icon {
@@ -1422,13 +1808,7 @@ body.bus-detail-page .bus-stop:last-child {
   font-family: 'Hibiya24', serif;
   font-size: 12px;
   font-weight: bold;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-}
-
-html[data-theme="lcd"] .bus-marker {
-  box-shadow:
-    0 1px 3px rgba(28, 38, 26, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 4px var(--shadow);
 }
 
 .bus-marker-current {
@@ -1591,7 +1971,7 @@ body.route-search-page .refresh-bar {
 
 .route-search-result:active,
 .route-search-result--loading {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--press);
 }
 
 .route-search-result-id {
@@ -1643,7 +2023,7 @@ body.route-search-page .refresh-bar {
   flex-shrink: 0;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
-  background: rgba(255, 255, 0, 0.25);
+  background: color-mix(in srgb, var(--nwfb) 25%, transparent);
   color: var(--nwfb);
   font-size: 12px;
   line-height: 1.2;
@@ -1772,6 +2152,7 @@ html[data-theme="lcd"] .route-search-key:active {
 @media (min-width: 480px) {
   .page-nav,
   .weather-section,
+  .traffic-section,
   .route-search-bar,
   .location-prompt,
   .groups,

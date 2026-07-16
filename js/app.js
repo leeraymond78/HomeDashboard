@@ -1,4 +1,5 @@
 import { loadWeatherSection, startWeatherRefresh } from './weather.js';
+import { loadTrafficSection, startTrafficRefresh } from './traffic.js';
 import { distanceM, formatDistance, bootstrapLocation, geolocationBlockReason, getLastGeoError, getUserPosition, requestUserPosition } from './location.js';
 import { escapeHtml } from './utils.js';
 import { initPullToRefresh } from './pull-to-refresh.js';
@@ -796,6 +797,7 @@ async function refreshAll({ spinButton = false } = {}) {
     await Promise.all([
       updateLocation({ resort: true }),
       loadWeatherSection(),
+      loadTrafficSection(),
     ]);
   } finally {
     if (spinButton) btn?.classList.remove('spinning');
@@ -831,7 +833,7 @@ async function onLocaleChange() {
   groupEtas.clear();
   groupState.clear();
   renderGroups();
-  await loadWeatherSection();
+  await Promise.all([loadWeatherSection(), loadTrafficSection()]);
   await refreshOpenGroups({ silent: false });
   const block = geolocationBlockReason();
   if (block || !getUserPosition()) {
@@ -851,14 +853,16 @@ async function init() {
     renderGroups();
 
     const locStatus = await bootstrapLocation();
-    await loadWeatherSection();
     if (!applyLocationFromPosition(getUserPosition())) {
       await showLocationPrompt(locStatus);
       updateAllGroups();
       refreshOpenGroups();
     }
     setupLocationPrompt();
+    // Weather/traffic must not block nearby-group auto-expand.
+    void Promise.all([loadWeatherSection(), loadTrafficSection()]);
     startWeatherRefresh();
+    startTrafficRefresh();
     startRefreshTimer();
     setInterval(updateRefreshTimer, 1000);
     setInterval(updateLiveMinutes, 30_000);
