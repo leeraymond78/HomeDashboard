@@ -8,7 +8,6 @@
         { "type": "kmb", "route": "52X", "bound": "O", "stop": "971554761E4413EF" },
         { "type": "kmb", "route": "61M", "bound": "O", "stop": "971554761E4413EF" },
         { "type": "kmb", "route": "53", "bound": "O", "stop": "971554761E4413EF" },
-        { "type": "kmb", "route": "A33", "bound": "I", "stop": "CDE436F19F193080" },
         { "type": "kmb", "route": "252S", "bound": "O", "stop": "971554761E4413EF" },
         { "type": "nwfb", "route": "952", "dir": "O", "stop": "001889" },
         { "type": "nwfb", "route": "962", "dir": "O", "stop": "001889" },
