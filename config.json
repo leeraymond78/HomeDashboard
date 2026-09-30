@@ -9,9 +9,14 @@
         { "type": "kmb", "route": "61M", "bound": "O", "stop": "971554761E4413EF" },
         { "type": "kmb", "route": "53", "bound": "O", "stop": "971554761E4413EF" },
         { "type": "kmb", "route": "252S", "bound": "O", "stop": "971554761E4413EF" },
+        { "type": "kmb", "route": "252B", "bound": "O", "stop": "971554761E4413EF" },
+        { "type": "kmb", "route": "252X", "bound": "O", "stop": "971554761E4413EF" },
+        { "type": "kmb", "route": "261B", "bound": "O", "stop": "971554761E4413EF" },
         { "type": "nwfb", "route": "952", "dir": "O", "stop": "001889" },
         { "type": "nwfb", "route": "962", "dir": "O", "stop": "001889" },
-        { "type": "nwfb", "route": "952P", "dir": "O", "stop": "001889" }
+        { "type": "nwfb", "route": "952P", "dir": "O", "stop": "001889" },
+        { "type": "nwfb", "route": "N952", "dir": "O", "stop": "001889" },
+        { "type": "nwfb", "route": "N962", "dir": "O", "stop": "001889" }
       ]
     },
     {
@@ -59,6 +64,16 @@
         { "type": "kmb", "route": "52X", "bound": "I", "stop": "813A44129E51981F" },
         { "type": "kmb", "route": "61M", "bound": "I", "stop": "813A44129E51981F" },
         { "type": "kmb", "route": "53", "bound": "I", "stop": "813A44129E51981F" },
+        { "type": "kmb", "route": "252S", "bound": "I", "stop": "813A44129E51981F" },
+        { "type": "kmb", "route": "252X", "bound": "I", "stop": "813A44129E51981F" },
+        { "type": "kmb", "route": "261X", "bound": "O", "stop": "813A44129E51981F" },
+        { "type": "kmb", "route": "N252", "bound": "O", "stop": "813A44129E51981F" },
+        { "type": "kmb", "route": "A33", "bound": "O", "stop": "9585FB90C56F451F" },
+        { "type": "kmb", "route": "NA52", "bound": "I", "stop": "9585FB90C56F451F" },
+        { "type": "nwfb", "route": "952", "dir": "I", "stop": "001901" },
+        { "type": "nwfb", "route": "962", "dir": "I", "stop": "001901" },
+        { "type": "nwfb", "route": "N952", "dir": "I", "stop": "001901" },
+        { "type": "nwfb", "route": "N962", "dir": "I", "stop": "001901" },
         { "type": "gmb", "routeId": "43", "realRouteId": "2001741", "stopId": "20002053", "routeSeq": 1 },
         { "type": "gmb", "routeId": "43B", "realRouteId": "2001740", "stopId": "20002053", "routeSeq": 1 }
       ]
