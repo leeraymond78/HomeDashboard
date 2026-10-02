@@ -1,6 +1,6 @@
 @font-face {
   font-family: 'Hibiya24';
-  src: url('../fonts/Hibiya24.ttf') format('truetype');
+  src: url('../fonts/Hibiya24.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -329,6 +329,13 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 .group {
   background: var(--bg);
   border-bottom: 1px solid var(--border);
+}
+
+/* First groups stay in normal layout (above the fold). Later closed groups
+   skip layout/paint until scrolled near or opened. */
+.groups .group:nth-child(n + 4):not(.open) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100% auto 4.5rem;
 }
 
 .group-header {

@@ -60,8 +60,20 @@ async function loadConfig() {
   config = await res.json();
 }
 
+/** @type {Promise<void> | null} */
+let stopGeoPromise = null;
+
+function ensureStopGeo() {
+  if (!stopGeoPromise) {
+    stopGeoPromise = loadStopGeo().catch((err) => {
+      stopGeoPromise = null;
+      throw err;
+    });
+  }
+  return stopGeoPromise;
+}
+
 async function loadStopGeo() {
-  // Ensure fare DB is loaded once before processing all stops.
   await ensureRouteFareDb();
   const firstStops = config.groups.map((g) => g.routeStops[0]).filter(Boolean);
   await Promise.all(firstStops.map(loadRouteStopGeo));
@@ -120,16 +132,30 @@ function autoExpandNearby() {
 }
 
 function sortGroupsByDistance() {
-  config.groups = config.groups
-    .map((group, i) => ({ group, i, dist: distanceToGroup(group) }))
-    .sort((a, b) => {
-      const aNear = a.dist != null && a.dist < LOCATION_THRESHOLD_M;
-      const bNear = b.dist != null && b.dist < LOCATION_THRESHOLD_M;
-      if (aNear !== bNear) return aNear ? -1 : 1;
-      if (a.dist != null && b.dist != null && a.dist !== b.dist) return a.dist - b.dist;
-      return a.i - b.i;
-    })
-    .map(({ group }) => group);
+  const tagged = config.groups.map((group, i) => ({
+    group,
+    i,
+    dist: distanceToGroup(group),
+    etas: groupEtas.get(i),
+    state: groupState.get(i),
+    showAll: groupShowAllEtas.has(i),
+  }));
+  tagged.sort((a, b) => {
+    const aNear = a.dist != null && a.dist < LOCATION_THRESHOLD_M;
+    const bNear = b.dist != null && b.dist < LOCATION_THRESHOLD_M;
+    if (aNear !== bNear) return aNear ? -1 : 1;
+    if (a.dist != null && b.dist != null && a.dist !== b.dist) return a.dist - b.dist;
+    return a.i - b.i;
+  });
+  config.groups = tagged.map(({ group }) => group);
+  groupEtas.clear();
+  groupState.clear();
+  groupShowAllEtas.clear();
+  tagged.forEach((item, i) => {
+    if (item.etas) groupEtas.set(i, item.etas);
+    if (item.state) groupState.set(i, item.state);
+    if (item.showAll) groupShowAllEtas.add(i);
+  });
 }
 
 function applyLocationSort() {
@@ -138,10 +164,11 @@ function applyLocationSort() {
 }
 
 function updateLocation({ resort = false } = {}) {
-  return requestUserPosition().then((pos) => {
+  return requestUserPosition().then(async (pos) => {
     if (pos) hideLocationPrompt();
     if (!pos) return;
     if (resort) {
+      await ensureStopGeo();
       groupEtas.clear();
       groupState.clear();
       groupShowAllEtas.clear();
@@ -191,14 +218,34 @@ async function showLocationPrompt(status) {
   btn.textContent = t('location.prompt');
 }
 
+/** @type {Promise<boolean> | null} */
+let locationApply = null;
+/** @type {GeolocationPosition | null} */
+let lastAppliedPosition = null;
+
 function applyLocationFromPosition(pos) {
-  if (!pos) return false;
-  hideLocationPrompt();
-  applyLocationSort();
-  renderGroups();
-  updateAllGroups();
-  refreshOpenGroups();
-  return true;
+  if (!pos) return Promise.resolve(false);
+  if (lastAppliedPosition === pos) return Promise.resolve(true);
+  if (!locationApply) {
+    locationApply = (async () => {
+      try {
+        await ensureStopGeo();
+        const current = getUserPosition();
+        if (!current) return false;
+        if (lastAppliedPosition === current) return true;
+        lastAppliedPosition = current;
+        hideLocationPrompt();
+        applyLocationSort();
+        renderGroups();
+        updateAllGroups();
+        refreshOpenGroups();
+        return true;
+      } finally {
+        locationApply = null;
+      }
+    })();
+  }
+  return locationApply;
 }
 
 function setupLocationPrompt() {
@@ -212,8 +259,8 @@ function setupLocationPrompt() {
       showLocationPrompt(block);
       return;
     }
-    requestUserPosition().then((pos) => {
-      if (applyLocationFromPosition(pos)) return;
+    requestUserPosition().then(async (pos) => {
+      if (await applyLocationFromPosition(pos)) return;
       const err = getLastGeoError();
       if (err?.code === 1) showLocationPrompt('denied');
       else showLocationPrompt('unavailable');
@@ -730,21 +777,22 @@ async function refreshGroup(index, { silent = false } = {}) {
       if (enrichGeneration.get(index) !== gen) return;
       try {
         const etas = await fetchEtas(rs);
-        if (enrichGeneration.get(index) !== gen) return;
+        const liveIndex = config.groups.indexOf(group);
+        if (liveIndex < 0 || enrichGeneration.get(index) !== gen) return;
 
-        if (silent && groupEtas.has(index)) {
-          mergeBasicRefreshForRoute(index, rs, etas);
+        if (silent && groupEtas.has(liveIndex)) {
+          mergeBasicRefreshForRoute(liveIndex, rs, etas);
         } else {
-          const current = groupEtas.get(index) ?? [];
-          groupEtas.set(index, [...current, ...etas].sort((a, b) => a.etaTime - b.etaTime));
+          const current = groupEtas.get(liveIndex) ?? [];
+          groupEtas.set(liveIndex, [...current, ...etas].sort((a, b) => a.etaTime - b.etaTime));
         }
 
-        groupState.set(index, 'ok');
+        groupState.set(liveIndex, 'ok');
         lastRefresh = new Date();
-        updateGroup(index);
+        updateGroup(liveIndex);
         // Fire-and-forget: enrichment runs in the background and does not
         // block the main ETA render or delay subsequent route stops.
-        enrichRouteStopEtas(index, rs, gen).catch(() => {});
+        enrichRouteStopEtas(liveIndex, rs, gen).catch(() => {});
       } catch {
         hadError = true;
       }
@@ -849,18 +897,19 @@ async function init() {
   loadBuildStamp();
   try {
     await loadConfig();
-    await loadStopGeo();
     renderGroups();
+    setupLocationPrompt();
+    // Weather/traffic must not block the group shell or nearby auto-expand.
+    void Promise.all([loadWeatherSection(), loadTrafficSection()]);
+    const geoPromise = ensureStopGeo();
 
     const locStatus = await bootstrapLocation();
-    if (!applyLocationFromPosition(getUserPosition())) {
+    await geoPromise;
+    if (!(await applyLocationFromPosition(getUserPosition()))) {
       await showLocationPrompt(locStatus);
       updateAllGroups();
       refreshOpenGroups();
     }
-    setupLocationPrompt();
-    // Weather/traffic must not block nearby-group auto-expand.
-    void Promise.all([loadWeatherSection(), loadTrafficSection()]);
     startWeatherRefresh();
     startTrafficRefresh();
     startRefreshTimer();

@@ -1,5 +1,5 @@
 /* HomeDashboard service worker — app shell + runtime CDN cache. */
-const SHELL_VERSION = 'v31';
+const SHELL_VERSION = 'v32';
 const SHELL_CACHE = `home-dashboard-shell-${SHELL_VERSION}`;
 const RUNTIME_CACHE = `home-dashboard-runtime-${SHELL_VERSION}`;
 
@@ -30,7 +30,7 @@ const SHELL_ASSETS = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
-  'fonts/Hibiya24.ttf',
+  'fonts/Hibiya24.woff2',
 ];
 
 const CDN_ASSETS = [
@@ -127,25 +127,35 @@ async function networkFirstBuildInfo(request) {
   }
 }
 
-async function networkFirstNavigation(request) {
+async function staleWhileRevalidateNavigation(request) {
   const cache = await caches.open(SHELL_CACHE);
+  const cached =
+    (await cache.match(request)) ||
+    (await cache.match(request, { ignoreSearch: true }));
 
-  try {
-    const response = await fetch(request);
-    if (response.ok) cache.put(request, response.clone());
-    return response;
-  } catch {
-    const cached =
-      (await cache.match(request, { ignoreSearch: true })) ||
-      (await cache.match(scopeUrl('bus.html'), { ignoreSearch: true })) ||
-      (await cache.match(scopeUrl('index.html'))) ||
-      (await cache.match(scopeUrl('./')));
-    if (cached) return cached;
-    return new Response('オフラインです。ネットワーク接続を確認してください。', {
-      status: 503,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-    });
+  const refresh = fetch(request)
+    .then((response) => {
+      if (response.ok) cache.put(request, response.clone());
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    refresh.catch(() => {});
+    return cached;
   }
+
+  const response = await refresh;
+  if (response) return response;
+
+  const fallback =
+    (await cache.match(scopeUrl('index.html'))) ||
+    (await cache.match(scopeUrl('./')));
+  if (fallback) return fallback;
+  return new Response('オフラインです。ネットワーク接続を確認してください。', {
+    status: 503,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  });
 }
 
 function isCdnAsset(url) {
@@ -172,7 +182,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirstNavigation(request));
+    event.respondWith(staleWhileRevalidateNavigation(request));
     return;
   }
 
