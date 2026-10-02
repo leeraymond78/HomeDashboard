@@ -27,6 +27,8 @@ const MTR_DEST = {
   TL: { zh: '大欖', en: 'Tai Lam' },
   SKWT: { zh: '掃管笏', en: 'So Kwun Wat' },
   SKW_CIR: { zh: '掃管笏', en: 'So Kwun Wat' },
+  LKT: { zh: '龍鼓灘', en: 'Lung Kwu Tan' },
+  YWV: { zh: '悅湖山莊', en: 'Yuet Wu Villa' },
 };
 
 export const SOCIF_GEO = {
@@ -125,11 +127,19 @@ export function mtrRouteFromStopId(stopId) {
   return stopId.split('-')[0];
 }
 
+/**
+ * MTR lineRef is `{route}_{dest}` (e.g. K51A_FT) or `{route}_{orig}_{dest}`
+ * (e.g. K51_TL_FT). Circular routes use a compound suffix (e.g. K53_SKW_CIR).
+ */
 function mtrDestFromLineRef(lineRef) {
-  const suffix = lineRef.split('_').slice(1).join('_');
-  const entry = MTR_DEST[suffix];
-  if (entry) return pickLocalized(entry.zh, entry.en);
-  return suffix;
+  const parts = String(lineRef ?? '').split('_').slice(1).filter(Boolean);
+  if (!parts.length) return '';
+  const candidates = [parts.join('_'), parts.at(-1)];
+  for (const key of candidates) {
+    const entry = MTR_DEST[key];
+    if (entry) return pickLocalized(entry.zh, entry.en);
+  }
+  return parts.at(-1);
 }
 
 async function fetchMtrSchedule(route) {
