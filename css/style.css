@@ -443,9 +443,6 @@ body.pull-release > :not(.pull-refresh):not(.refresh-bar) {
 .col-route { width: 50px; }
 .col-express { width: 46px; }
 
-html[data-locale="en"] .col-express {
-  width: 52px;
-}
 .col-time { width: 86px; }
 .col-mins { width: 26px; }
 .col-remark { width: 5.5em; min-width: 88px; }
@@ -472,18 +469,9 @@ html[data-locale="en"] .col-express {
   text-overflow: ellipsis;
 }
 
-html[data-locale="en"] .express-badge {
-  font-size: clamp(8px, 2.4vw, 10px);
-  line-height: 1.15;
-  white-space: normal;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  text-wrap: balance;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  text-overflow: unset;
+html[data-locale="en"] .col-express,
+html[data-locale="en"] .express-cell {
+  display: none;
 }
 
 .eta-time {
